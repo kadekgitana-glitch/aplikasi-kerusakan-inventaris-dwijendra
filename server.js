@@ -2,39 +2,30 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 3000;
-const MIME_TYPES = {
-  '.html': 'text/html',
-  '.css': 'text/css',
-  '.js': 'text/javascript',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml'
-};
+let cachedHtml = '';
+try {
+  cachedHtml = require('./html_bundle.js');
+} catch (e) {
+  try {
+    cachedHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  } catch (err) {
+    cachedHtml = '<h1>Sistem Informasi Kerusakan Inventaris</h1>';
+  }
+}
 
 const server = http.createServer((req, res) => {
-  let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
-  fs.stat(filePath, (err, stats) => {
-    if (err || !stats.isFile()) {
-      filePath = path.join(__dirname, 'index.html');
-    }
-    const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-
-    fs.readFile(filePath, (err, content) => {
-      if (err) {
-        res.writeHead(500);
-        res.end('Error loading ' + filePath);
-      } else {
-        res.writeHead(200, { 'Content-Type': contentType });
-        res.end(content, 'utf-8');
-      }
-    });
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'public, max-age=0, must-revalidate'
   });
+  res.end(cachedHtml);
 });
 
-server.listen(PORT, () => {
-  console.log(`Server aktif di http://localhost:${PORT}`);
-});
+module.exports = server;
+
+if (require.main === module || !process.env.VERCEL) {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`Server aktif di http://localhost:${PORT}`);
+  });
+}

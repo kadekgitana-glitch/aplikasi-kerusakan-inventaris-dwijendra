@@ -1,0 +1,11 @@
+{
+  "name": "aplikasi-kerusakan-inventaris-dwijendra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistem Informasi Kerusakan Inventaris SMK Dwijendra Denpasar",
+  "main": "server.js",
+  "scripts": {
+    "build": "node build_standalone.js",
+    "start": "node server.js"
+  }
+}

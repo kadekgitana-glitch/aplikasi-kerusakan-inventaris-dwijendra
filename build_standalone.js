@@ -1051,4 +1051,12 @@ standaloneHtml = standaloneHtml.replace(
 );
 
 fs.writeFileSync(path.join(__dirname, 'index.html'), standaloneHtml, 'utf8');
-console.log('BERHASIL: index.html standalone telah dibuat!');
+
+const distDir = path.join(__dirname, 'dist');
+if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
+fs.writeFileSync(path.join(distDir, 'index.html'), standaloneHtml, 'utf8');
+
+// Export HTML module for serverless bundlers
+fs.writeFileSync(path.join(__dirname, 'html_bundle.js'), 'module.exports = ' + JSON.stringify(standaloneHtml) + ';\n', 'utf8');
+
+console.log('BERHASIL: index.html standalone dan html_bundle.js telah dibuat!');

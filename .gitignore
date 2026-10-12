@@ -3,3 +3,5 @@ node_modules/
 .vercel/
 .system_generated/
 *.log
+.vercel
+.env*
