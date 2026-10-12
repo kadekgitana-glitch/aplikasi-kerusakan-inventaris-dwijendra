@@ -1584,6 +1584,9 @@ body {
       </div>
     </aside>
 
+    <!-- Overlay Gelap Latar Belakang saat Sidebar Terbuka di HP -->
+    <div id="sidebar-overlay" onclick="toggleSidebar()" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.6); z-index:99; backdrop-filter:blur(2px); transition:opacity 0.2s;"></div>
+
     <!-- MAIN CONTENT AREA -->
     <main class="app-main">
       <header class="app-header">
@@ -4344,10 +4347,24 @@ function navigateTo(viewName) {
   else if (viewName === 'users') loadUsersData();
   else if (viewName === 'log') loadLogData(1);
   else if (viewName === 'backup') loadBackupList();
+
+  // Otomatis tutup sidebar di layar HP saat menu diklik
+  if (window.innerWidth <= 768) {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebar-overlay');
+    if (sb) sb.classList.remove('open');
+    if (ov) ov.style.display = 'none';
+  }
 }
 
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  if (!sb) return;
+  sb.classList.toggle('open');
+  if (ov) {
+    ov.style.display = sb.classList.contains('open') ? 'block' : 'none';
+  }
 }
 
 // Sinkronisasi Terpadu: Menyegarkan Data Tampilan Aktif & Angka Badge Sidebar
