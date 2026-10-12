@@ -404,6 +404,22 @@ async function refreshCurrentViewAndBadges() {
   else if (AppState.activeView === 'log') loadLogData(1);
 }
 
+// Manual Cloud Synchronization Trigger (Tombol Topbar / Pengaturan)
+async function triggerManualSync() {
+  const btn = document.getElementById('btn-sync-cloud');
+  const txt = document.getElementById('cloud-sync-text');
+  if (txt) txt.textContent = 'Menyinkronkan...';
+  showToast('Sedang menyinkronkan data antar-perangkat...', 'info', 2000);
+  try {
+    await callApi('sync.pull');
+    await loadMasterData();
+    await refreshCurrentViewAndBadges();
+    showToast('✅ Data laporan berhasil disinkronkan antar-perangkat!', 'success', 3500);
+  } catch (err) {
+    showToast('Sinkronisasi cloud gagal: ' + err.message, 'warning', 3500);
+  }
+}
+
 // =============================================================================
 // 5. MASTER DATA (BARANG & LOKASI)
 // =============================================================================
@@ -873,6 +889,10 @@ async function submitLaporanForm(isInputBaru = false) {
     showToast(`Laporan ${targetLaporanId} berhasil disimpan!`, 'success');
     await loadMasterData();
     await refreshCurrentViewAndBadges();
+
+    // Pastikan seluruh modul inti langsung tersegarkan
+    if (typeof loadDashboard === 'function') loadDashboard();
+    if (typeof loadTableData === 'function') loadTableData(1);
 
     if (isInputBaru) {
       resetFormKerusakan();
@@ -1405,7 +1425,10 @@ let cachedLaporanBulananData = null;
 
 function initLaporanBulananView() {
   populateYearSelect('lap-bul-year', [2026, 2025, 2024], new Date().getFullYear());
-  document.getElementById('lap-bul-month').value = new Date().getMonth() + 1;
+  const monthSelect = document.getElementById('lap-bul-month');
+  if (monthSelect && !monthSelect.value) {
+    monthSelect.value = 'ALL';
+  }
   generateLaporanBulanan();
 }
 
@@ -1425,11 +1448,18 @@ async function generateLaporanBulanan() {
     // Header Laporan
     document.getElementById('doc-th-pelajaran').textContent = `TAHUN PELAJARAN ${res.meta.tahunPelajaran}`;
     document.getElementById('doc-school-name').textContent = res.meta.namaSekolahUpper;
-    document.getElementById('doc-bulan-periode').textContent = `BULAN: ${res.periode.namaBulan.toUpperCase()} ${res.periode.tahun}`;
+    document.getElementById('doc-bulan-periode').textContent = `PERIODE: ${res.periode.namaBulan.toUpperCase()} ${res.periode.tahun}`;
 
     // Baris Tabel
     if (!res.rows.length) {
-      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:30px; color:var(--neutral-400);">Tidak ada catatan kerusakan inventaris pada periode ini.</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:35px 20px; color:var(--neutral-400);">
+        <div style="font-size:24px; margin-bottom:8px;">📋</div>
+        <div style="font-weight:600; font-size:14px; color:var(--neutral-700);">Tidak ada catatan kerusakan inventaris pada periode ini.</div>
+        <div style="font-size:12px; margin-top:4px; color:var(--neutral-500);">Periksa pilihan filter bulan/ruangan atau klik tombol di bawah untuk menampilkan seluruh laporan:</div>
+        <button class="btn btn-primary" onclick="document.getElementById('lap-bul-month').value='ALL'; generateLaporanBulanan();" style="margin-top:12px; font-size:12px; padding:6px 16px;">
+          Tampilkan Semua Bulan (1 Tahun)
+        </button>
+      </td></tr>`;
     } else {
       tbody.innerHTML = res.rows.map((r) => `
         <tr>

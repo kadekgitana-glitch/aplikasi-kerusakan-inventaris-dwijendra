@@ -162,7 +162,11 @@
             <span class="page-desc" id="page-subtitle">Ringkasan kondisi inventaris sekolah</span>
           </div>
         </div>
-        <div class="header-right">
+        <div class="header-right" style="display:flex; align-items:center; gap:8px;">
+          <button id="btn-sync-cloud" class="btn btn-secondary" onclick="triggerManualSync()" title="Sinkronisasi Data Cloud Antar-Perangkat (HP & Komputer)" style="height:36px; padding:0 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px; border-radius:20px; cursor:pointer;">
+            <span id="cloud-sync-dot" style="width:8px; height:8px; border-radius:50%; background:#10b981; transition:background 0.3s;"></span>
+            <span id="cloud-sync-text" style="font-weight:600;">Tersinkron</span>
+          </button>
           <button class="quick-btn" onclick="navigateTo('input')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
             <span>+ Input Kerusakan</span>
@@ -679,11 +683,12 @@
           <div class="filter-bar">
             <div class="filter-group">
               <span class="filter-label">Tahun:</span>
-              <select id="lap-bul-year" class="form-select"></select>
+              <select id="lap-bul-year" class="form-select" onchange="generateLaporanBulanan()"></select>
             </div>
             <div class="filter-group">
               <span class="filter-label">Bulan:</span>
-              <select id="lap-bul-month" class="form-select">
+              <select id="lap-bul-month" class="form-select" onchange="generateLaporanBulanan()">
+                <option value="ALL">Semua Bulan (Tahun Berjalan)</option>
                 <option value="1">Januari</option>
                 <option value="2">Februari</option>
                 <option value="3">Maret</option>
@@ -700,13 +705,13 @@
             </div>
             <div class="filter-group">
               <span class="filter-label">Ruangan:</span>
-              <select id="lap-bul-lokasi" class="form-select">
+              <select id="lap-bul-lokasi" class="form-select" onchange="generateLaporanBulanan()">
                 <option value="">Semua Lokasi</option>
               </select>
             </div>
             <div class="filter-group">
               <span class="filter-label">Status:</span>
-              <select id="lap-bul-status" class="form-select">
+              <select id="lap-bul-status" class="form-select" onchange="generateLaporanBulanan()">
                 <option value="">Semua Status</option>
                 <option value="BELUM">Belum Diperbaiki</option>
                 <option value="SUDAH">Sudah Diperbaiki</option>

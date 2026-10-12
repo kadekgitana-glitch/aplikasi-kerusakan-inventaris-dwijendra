@@ -205,6 +205,141 @@ function openIndexedDb() {
   });
 }
 
+// --- FIREBASE DEDICATED ISOLATED CLOUD REALTIME DATABASE ---
+const FIREBASE_DB_URL = 'https://sarpras-sekolah-default-rtdb.asia-southeast1.firebasedatabase.app/aplikasi_kerusakan_inventaris_dwijendra.json';
+
+let _syncDebounceTimer = null;
+
+function updateCloudStatusBadge(state, label) {
+  if (typeof document === 'undefined') return;
+  const dot = document.getElementById('cloud-sync-dot');
+  const txt = document.getElementById('cloud-sync-text');
+  if (!dot || !txt) return;
+  txt.textContent = label;
+  if (state === 'online') {
+    dot.style.background = '#10b981';
+    txt.parentElement.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+    txt.parentElement.style.color = '#065f46';
+  } else if (state === 'syncing') {
+    dot.style.background = '#3b82f6';
+    txt.parentElement.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+    txt.parentElement.style.color = '#1e40af';
+  } else {
+    dot.style.background = '#f59e0b';
+    txt.parentElement.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+    txt.parentElement.style.color = '#92400e';
+  }
+}
+
+// Sinkronkan data ke Cloud Realtime Database (Asinkron & Debounced)
+async function syncToFirebaseCloud(db) {
+  if (typeof fetch === 'undefined') return;
+  try {
+    updateCloudStatusBadge('syncing', 'Menyimpan...');
+    const cloudPayload = {
+      ...db,
+      laporan: (db.laporan || []).map(r => ({
+        ...r,
+        fotoKerusakan: (r.fotoKerusakan || []).map(f => ({ fotoId: f.fotoId, nama: f.nama, thumb: f.thumb })),
+        fotoPerbaikan: (r.fotoPerbaikan || []).map(f => ({ fotoId: f.fotoId, nama: f.nama, thumb: f.thumb }))
+      }))
+    };
+    const res = await fetch(FIREBASE_DB_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cloudPayload)
+    });
+    if (res.ok) {
+      updateCloudStatusBadge('online', 'Tersinkron');
+    } else {
+      updateCloudStatusBadge('offline', 'Lokal (Pending)');
+    }
+  } catch (err) {
+    updateCloudStatusBadge('offline', 'Mode Offline');
+  }
+}
+
+// Ambil & gabungkan data dari Cloud (Two-Way Conflict-Free Merge)
+async function pullFromFirebaseCloud(forceRefresh = false) {
+  if (typeof fetch === 'undefined') return getLocalDb();
+  try {
+    updateCloudStatusBadge('syncing', 'Menyinkronkan...');
+    const res = await fetch(FIREBASE_DB_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const cloudData = await res.json();
+    if (cloudData && typeof cloudData === 'object' && Array.isArray(cloudData.laporan)) {
+      const local = getLocalDb();
+      const map = new Map();
+
+      // Masukkan cloud data
+      cloudData.laporan.forEach(r => map.set(r.id, r));
+
+      // Masukkan / gabungkan dengan data lokal (jika lokal lebih baru atau belum ada di cloud)
+      (local.laporan || []).forEach(localR => {
+        if (!map.has(localR.id)) {
+          map.set(localR.id, localR);
+        } else {
+          const cloudR = map.get(localR.id);
+          if ((localR.diubahPada || '') > (cloudR.diubahPada || '')) {
+            map.set(localR.id, localR);
+          }
+        }
+      });
+
+      const mergedLaporan = Array.from(map.values());
+      mergedLaporan.sort((a, b) => (b.tglRusak || '').localeCompare(a.tglRusak || ''));
+
+      const mergedBarang = Array.from(new Set([
+        ...(local.barang || []).map(b => JSON.stringify(b)),
+        ...(cloudData.barang || []).map(b => JSON.stringify(b))
+      ])).map(s => JSON.parse(s));
+
+      const mergedLokasi = Array.from(new Set([
+        ...(local.lokasi || []).map(l => JSON.stringify(l)),
+        ...(cloudData.lokasi || []).map(l => JSON.stringify(l))
+      ])).map(s => JSON.parse(s));
+
+      const mergedDb = {
+        ...local,
+        settings: cloudData.settings || local.settings,
+        laporan: mergedLaporan,
+        barang: mergedBarang,
+        lokasi: mergedLokasi
+      };
+
+      _memDbCache = mergedDb;
+
+      openIndexedDb().then((idb) => {
+        if (!idb) return;
+        try {
+          const tx = idb.transaction(IDB_STORE_MAIN, 'readwrite');
+          tx.objectStore(IDB_STORE_MAIN).put(mergedDb, 'database_root');
+        } catch(e) {}
+      });
+
+      if (mergedLaporan.length > cloudData.laporan.length) {
+        syncToFirebaseCloud(mergedDb);
+      } else {
+        updateCloudStatusBadge('online', 'Tersinkron');
+      }
+
+      if (forceRefresh && typeof refreshCurrentViewAndBadges === 'function') {
+        refreshCurrentViewAndBadges();
+      }
+
+      return mergedDb;
+    } else {
+      const local = getLocalDb();
+      await syncToFirebaseCloud(local);
+      updateCloudStatusBadge('online', 'Tersinkron');
+      return local;
+    }
+  } catch (err) {
+    updateCloudStatusBadge('offline', 'Mode Offline');
+    return getLocalDb();
+  }
+}
+
 // Inisialisasi Database (Dimuat saat aplikasi mulai)
 async function initUnlimitedStorageEngine() {
   if (_memDbCache) return _memDbCache;
@@ -222,6 +357,7 @@ async function initUnlimitedStorageEngine() {
       });
       if (val && typeof val === 'object' && val.laporan) {
         _memDbCache = val;
+        setTimeout(() => { pullFromFirebaseCloud(); }, 100);
         return _memDbCache;
       }
     }
@@ -235,14 +371,23 @@ async function initUnlimitedStorageEngine() {
       const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (raw) {
         _memDbCache = JSON.parse(raw);
-        // Migrasikan ke IndexedDB
         saveLocalDb(_memDbCache);
+        setTimeout(() => { pullFromFirebaseCloud(); }, 100);
         return _memDbCache;
       }
     }
   } catch(e) {}
 
-  // 3. Jika baru pertama kali, gunakan INITIAL_DB
+  // 3. Coba tarik dari Cloud jika perangkat baru dibuka
+  try {
+    const cloudDb = await pullFromFirebaseCloud();
+    if (cloudDb && cloudDb.laporan && cloudDb.laporan.length > 0) {
+      _memDbCache = cloudDb;
+      return _memDbCache;
+    }
+  } catch(e) {}
+
+  // 4. Jika baru pertama kali, gunakan INITIAL_DB
   _memDbCache = JSON.parse(JSON.stringify(INITIAL_DB));
   saveLocalDb(_memDbCache);
   return _memDbCache;
@@ -250,7 +395,6 @@ async function initUnlimitedStorageEngine() {
 
 function getLocalDb() {
   if (_memDbCache) return _memDbCache;
-  // Fallback sinkron awal
   try {
     if (typeof localStorage !== 'undefined') {
       const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -278,7 +422,7 @@ function saveLocalDb(db) {
     }
   });
 
-  // 2. Simpan versi ringan ke LocalStorage (buang binary foto besar agar localStorage tidak QuotaExceededError)
+  // 2. Simpan versi ringan ke LocalStorage
   try {
     if (typeof localStorage !== 'undefined') {
       const lightDb = {
@@ -291,8 +435,16 @@ function saveLocalDb(db) {
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lightDb));
     }
-  } catch(e) {
-    // Abaikan jika localStorage browser perangkat sudah penuh, IndexedDB yang menjadi acuan utama
+  } catch(e) {}
+
+  // 3. Otomatis sinkronkan ke Cloud Realtime Database (Antar-Perangkat HP & Laptop)
+  if (typeof clearTimeout !== 'undefined' && typeof setTimeout !== 'undefined') {
+    clearTimeout(_syncDebounceTimer);
+    _syncDebounceTimer = setTimeout(() => {
+      syncToFirebaseCloud(db);
+    }, 400);
+  } else if (typeof syncToFirebaseCloud === 'function') {
+    syncToFirebaseCloud(db);
   }
 }
 
@@ -551,8 +703,8 @@ function handleLocalRpc(action, payload) {
 
   if (action === 'dashboard.get') {
     let list = db.laporan.filter(x => !x.arsip);
-    if (payload.year) list = list.filter(x => x.tglRusak.startsWith(String(payload.year)));
-    if (payload.month) list = list.filter(x => parseInt(x.tglRusak.substring(5,7),10) === parseInt(payload.month,10));
+    if (payload.year) list = list.filter(x => (x.tglRusak || '').startsWith(String(payload.year)));
+    if (payload.month) list = list.filter(x => parseInt((x.tglRusak || '').substring(5,7),10) === parseInt(payload.month,10));
     if (payload.lokasi) list = list.filter(x => x.lokasi === payload.lokasi);
     if (payload.status) list = list.filter(x => payload.status === 'SUDAH' ? x.status === 'Sudah Diperbaiki' : x.status === 'Belum Diperbaiki');
 
@@ -562,11 +714,11 @@ function handleLocalRpc(action, payload) {
       if (r.status === 'Sudah Diperbaiki') sudah++; else belum++;
     });
 
-    const targetYear = payload.year || '2026';
+    const targetYear = String(payload.year || '2026');
     const trenBulanan = [];
     const BULAN_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     for (let m = 1; m <= 12; m++) {
-      const bItems = list.filter(x => x.tglRusak.startsWith(targetYear) && parseInt(x.tglRusak.substring(5,7),10) === m);
+      const bItems = list.filter(x => (x.tglRusak || '').startsWith(targetYear) && parseInt((x.tglRusak || '').substring(5,7),10) === m);
       trenBulanan.push({
         namaBulan: BULAN_ID[m - 1],
         total: bItems.length,
@@ -583,8 +735,10 @@ function handleLocalRpc(action, payload) {
     list.forEach(r => { barangMap[r.nama] = (barangMap[r.nama] || 0) + 1; });
     const topBarang = Object.keys(barangMap).map(k => ({ nama: k, totalKejadian: barangMap[k] })).sort((a,b)=>b.totalKejadian-a.totalKejadian);
 
-    const belumList = list.filter(x => x.status === 'Belum Diperbaiki').sort((a,b)=>a.tglRusak.localeCompare(b.tglRusak));
+    const belumList = list.filter(x => x.status === 'Belum Diperbaiki').sort((a,b)=>(a.tglRusak || '').localeCompare(b.tglRusak || ''));
     const aktivitasTerbaru = list.slice().sort((a,b)=>(b.diubahPada||'').localeCompare(a.diubahPada||'')).slice(0, 10);
+    const curYm = new Date().toISOString().substring(0, 7);
+    const bulanBerjalan = (db.laporan || []).filter(x => !x.arsip && (x.tglRusak || '').startsWith(curYm)).length;
 
     return {
       ok: true,
@@ -594,7 +748,7 @@ function handleLocalRpc(action, payload) {
           totalBarangTerdampak: totalBarang,
           belumDiperbaiki: belum,
           sudahDiperbaiki: sudah,
-          bulanBerjalanCount: list.filter(x => x.tglRusak.startsWith('2026-03')).length,
+          bulanBerjalanCount: bulanBerjalan,
           persentasePenyelesaian: list.length > 0 ? Math.round((sudah / list.length) * 1000) / 10 : 0
         },
         grafik: {
@@ -820,14 +974,43 @@ function handleLocalRpc(action, payload) {
 
   if (action === 'report.bulanan') {
     const BULAN_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    const month = parseInt(payload.month || 1, 10);
-    const year = parseInt(payload.year || 2026, 10);
-    const rows = db.laporan.filter(x => !x.arsip && x.tglRusak.startsWith(year + '-' + ('0' + month).slice(-2))).map((r, i) => ({
+    const year = payload.year ? parseInt(payload.year, 10) : new Date().getFullYear();
+    const isAllMonth = !payload.month || payload.month === 'ALL';
+    const month = isAllMonth ? null : parseInt(payload.month, 10);
+
+    let rowsList = db.laporan.filter(x => !x.arsip);
+
+    if (year) {
+      rowsList = rowsList.filter(x => (x.tglRusak || '').startsWith(String(year)));
+    }
+
+    if (month && !isNaN(month)) {
+      const monthPrefix = year + '-' + ('0' + month).slice(-2);
+      rowsList = rowsList.filter(x => {
+        const d = String(x.tglRusak || '');
+        return d.startsWith(monthPrefix) || (parseInt(d.substring(5, 7), 10) === month);
+      });
+    }
+
+    if (payload.lokasi) {
+      rowsList = rowsList.filter(x => x.lokasi === payload.lokasi);
+    }
+
+    if (payload.status) {
+      rowsList = rowsList.filter(x => payload.status === 'SUDAH' ? x.status === 'Sudah Diperbaiki' : x.status === 'Belum Diperbaiki');
+    }
+
+    rowsList.sort((a, b) => (a.tglRusak || '').localeCompare(b.tglRusak || ''));
+
+    const rows = rowsList.map((r, i) => ({
       no: i + 1, id: r.id, nama: r.nama, kode: r.kode || '-', jumlah: r.jumlah, lokasi: r.lokasi,
       kondisi: r.kondisi, fotoKerusakan: r.fotoKerusakan||[], tglRusak: r.tglRusak,
       tglRusakIndo: r.tglRusak, tglPerbaikan: r.tglPerbaikan||'', tglPerbaikanIndo: r.tglPerbaikan||'-',
       fotoPerbaikan: r.fotoPerbaikan||[], keterangan: r.keterangan||'-'
     }));
+
+    const namaBulanLabel = isAllMonth ? 'SEMUA BULAN (REKAP TAHUNAN)' : (BULAN_ID[(month || 1) - 1] || 'SEMUA BULAN');
+
     return {
       ok: true,
       data: {
@@ -839,7 +1022,7 @@ function handleLocalRpc(action, payload) {
           kiri: { jabatan: db.settings.kepala_jabatan, nama: db.settings.kepala_nama, idLabel: db.settings.kepala_id_label, id: db.settings.kepala_id },
           kanan: { pembuka: (db.settings.kota || 'Denpasar') + ', ' + new Date().toLocaleDateString('id-ID'), jabatan: db.settings.wakasek_jabatan, nama: db.settings.wakasek_nama, idLabel: db.settings.wakasek_id_label, id: db.settings.wakasek_id }
         },
-        periode: { tahun: year, bulan: month, namaBulan: BULAN_ID[month - 1] },
+        periode: { tahun: year, bulan: month, namaBulan: namaBulanLabel },
         rows: rows
       }
     };
@@ -848,7 +1031,7 @@ function handleLocalRpc(action, payload) {
   if (action === 'report.tahunan') {
     const year = payload.year || 2026;
     const BULAN_ID = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    const yearRecords = db.laporan.filter(x => !x.arsip && x.tglRusak.startsWith(String(year)));
+    const yearRecords = db.laporan.filter(x => !x.arsip && (x.tglRusak || '').startsWith(String(year)));
     let totalBarang = 0, sudah = 0, belum = 0;
     yearRecords.forEach(r => {
       totalBarang += (Number(r.jumlah) || 0);
@@ -856,7 +1039,7 @@ function handleLocalRpc(action, payload) {
     });
     const rekapBulanan = [];
     for (let m = 1; m <= 12; m++) {
-      const bItems = yearRecords.filter(x => parseInt(x.tglRusak.substring(5,7),10) === m);
+      const bItems = yearRecords.filter(x => parseInt((x.tglRusak || '').substring(5,7),10) === m);
       const bSudah = bItems.filter(x => x.status === 'Sudah Diperbaiki').length;
       rekapBulanan.push({
         namaBulan: BULAN_ID[m - 1],
@@ -1192,11 +1375,19 @@ function callApi(action, payload = {}) {
         })
         .api(action, payload, AppState.token);
     } else {
-      // Standalone Dedicated Database Engine dengan IndexedDB Unlimited Storage
+      // Standalone Dedicated Database Engine dengan IndexedDB + Realtime Cloud Sync
       (async () => {
         try {
-          if (action === 'public.config' && typeof initUnlimitedStorageEngine === 'function') {
+          if (typeof initUnlimitedStorageEngine === 'function') {
             await initUnlimitedStorageEngine();
+          }
+          if (action === 'sync.pull' && typeof pullFromFirebaseCloud === 'function') {
+            const syncedDb = await pullFromFirebaseCloud(true);
+            return resolve(syncedDb);
+          }
+          if (action === 'sync.push' && typeof syncToFirebaseCloud === 'function') {
+            await syncToFirebaseCloud(getLocalDb());
+            return resolve({ sukses: true });
           }
           if (action === 'foto.get' && typeof getPhotoBinary === 'function' && payload && payload.fotoId) {
             const binary = await getPhotoBinary(payload.fotoId);
