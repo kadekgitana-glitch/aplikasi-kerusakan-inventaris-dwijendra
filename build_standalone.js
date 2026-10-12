@@ -161,24 +161,167 @@ const INITIAL_DB = {
   ]
 };
 
-// --- FIREBASE CLOUD DATABASE CONFIGURATION ---
-function getLocalDb() {
-  const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (!raw) {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_DB));
-    return JSON.parse(JSON.stringify(INITIAL_DB));
+/**
+ * =============================================================================
+ * UNLIMITED HIGH-CAPACITY STORAGE ENGINE (INDEXEDDB + PERSISTENT HYBRID)
+ * =============================================================================
+ * - Menyimpan data dan dokumentasi foto di IndexedDB (Kapasitas hingga Gigabytes)
+ * - Mencegah 'QuotaExceededError' pada browser (Chrome, Safari, Edge, Android, iOS)
+ * - Menyimpan foto binary resolusi tinggi di object store 'photos' terpisah
+ * - Menyediakan sinkronisasi in-memory instan dengan auto-save asinkron aman
+ * =============================================================================
+ */
+const IDB_DB_NAME = 'SMK_DWIJENDRA_INVENTARIS_DB';
+const IDB_DB_VERSION = 1;
+const IDB_STORE_MAIN = 'app_data';
+const IDB_STORE_PHOTOS = 'photos';
+
+let _idbInstance = null;
+let _memDbCache = null;
+
+function openIndexedDb() {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === 'undefined') return resolve(null);
+    if (_idbInstance) return resolve(_idbInstance);
+
+    const req = indexedDB.open(IDB_DB_NAME, IDB_DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IDB_STORE_MAIN)) {
+        db.createObjectStore(IDB_STORE_MAIN);
+      }
+      if (!db.objectStoreNames.contains(IDB_STORE_PHOTOS)) {
+        db.createObjectStore(IDB_STORE_PHOTOS);
+      }
+    };
+    req.onsuccess = (e) => {
+      _idbInstance = e.target.result;
+      resolve(_idbInstance);
+    };
+    req.onerror = () => {
+      console.warn('IndexedDB gagal dibuka, beralih ke fallback memory/local.');
+      resolve(null);
+    };
+  });
+}
+
+// Inisialisasi Database (Dimuat saat aplikasi mulai)
+async function initUnlimitedStorageEngine() {
+  if (_memDbCache) return _memDbCache;
+
+  // 1. Coba baca dari IndexedDB
+  try {
+    const idb = await openIndexedDb();
+    if (idb) {
+      const val = await new Promise((res) => {
+        const tx = idb.transaction(IDB_STORE_MAIN, 'readonly');
+        const st = tx.objectStore(IDB_STORE_MAIN);
+        const g = st.get('database_root');
+        g.onsuccess = () => res(g.result);
+        g.onerror = () => res(null);
+      });
+      if (val && typeof val === 'object' && val.laporan) {
+        _memDbCache = val;
+        return _memDbCache;
+      }
+    }
+  } catch(e) {
+    console.warn('IDB init read error:', e);
   }
-  try { return JSON.parse(raw); } catch (e) { return JSON.parse(JSON.stringify(INITIAL_DB)); }
+
+  // 2. Jika IDB belum ada atau kosong, cek localStorage lama
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (raw) {
+        _memDbCache = JSON.parse(raw);
+        // Migrasikan ke IndexedDB
+        saveLocalDb(_memDbCache);
+        return _memDbCache;
+      }
+    }
+  } catch(e) {}
+
+  // 3. Jika baru pertama kali, gunakan INITIAL_DB
+  _memDbCache = JSON.parse(JSON.stringify(INITIAL_DB));
+  saveLocalDb(_memDbCache);
+  return _memDbCache;
+}
+
+function getLocalDb() {
+  if (_memDbCache) return _memDbCache;
+  // Fallback sinkron awal
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (raw) {
+        _memDbCache = JSON.parse(raw);
+        return _memDbCache;
+      }
+    }
+  } catch(e) {}
+  _memDbCache = JSON.parse(JSON.stringify(INITIAL_DB));
+  return _memDbCache;
 }
 
 function saveLocalDb(db) {
+  _memDbCache = db;
+
+  // 1. Simpan data lengkap ke IndexedDB (Kapasitas Gigabytes tanpa batas kuota)
+  openIndexedDb().then((idb) => {
+    if (!idb) return;
+    try {
+      const tx = idb.transaction(IDB_STORE_MAIN, 'readwrite');
+      tx.objectStore(IDB_STORE_MAIN).put(db, 'database_root');
+    } catch(err) {
+      console.warn('IDB save error:', err);
+    }
+  });
+
+  // 2. Simpan versi ringan ke LocalStorage (buang binary foto besar agar localStorage tidak QuotaExceededError)
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(db));
+      const lightDb = {
+        ...db,
+        laporan: (db.laporan || []).map(r => ({
+          ...r,
+          fotoKerusakan: (r.fotoKerusakan || []).map(f => ({ fotoId: f.fotoId, nama: f.nama, thumb: f.thumb })),
+          fotoPerbaikan: (r.fotoPerbaikan || []).map(f => ({ fotoId: f.fotoId, nama: f.nama, thumb: f.thumb }))
+        }))
+      };
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(lightDb));
     }
   } catch(e) {
-    console.warn('LocalStorage save warning:', e);
+    // Abaikan jika localStorage browser perangkat sudah penuh, IndexedDB yang menjadi acuan utama
   }
+}
+
+// Simpan Foto Binary ke IndexedDB High-Capacity Photo Store
+async function savePhotoBinary(fotoId, dataUrl) {
+  const idb = await openIndexedDb();
+  if (!idb) return;
+  return new Promise((res) => {
+    try {
+      const tx = idb.transaction(IDB_STORE_PHOTOS, 'readwrite');
+      tx.objectStore(IDB_STORE_PHOTOS).put(dataUrl, fotoId);
+      tx.oncomplete = () => res(true);
+      tx.onerror = () => res(false);
+    } catch(e) { res(false); }
+  });
+}
+
+// Ambil Foto Binary dari IndexedDB High-Capacity Photo Store
+async function getPhotoBinary(fotoId) {
+  const idb = await openIndexedDb();
+  if (!idb) return null;
+  return new Promise((res) => {
+    try {
+      const tx = idb.transaction(IDB_STORE_PHOTOS, 'readonly');
+      const req = tx.objectStore(IDB_STORE_PHOTOS).get(fotoId);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => res(null);
+    } catch(e) { res(null); }
+  });
 }
 
 // Helper untuk generate SVG visualisasi foto jika belum ada binary data
@@ -602,16 +745,24 @@ function handleLocalRpc(action, payload) {
   if (action === 'foto.upload') {
     const r = db.laporan.find(x => x.id === payload.laporanId);
     if (r) {
-      const fotoId = 'FT-' + Date.now();
+      const fotoId = 'FT-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
       const dataUrl = payload.dataBase64
         ? ('data:' + (payload.mime || 'image/jpeg') + ';base64,' + payload.dataBase64)
         : (payload.thumb || generateSvgDataUrl(payload.nama));
+      const thumbUrl = payload.thumb || dataUrl;
+
+      // Simpan foto full ke IndexedDB High-Capacity Storage
+      if (typeof savePhotoBinary === 'function' && dataUrl) {
+        savePhotoBinary(fotoId, dataUrl);
+      }
+
       const fItem = {
         fotoId: fotoId,
         nama: payload.nama || 'Foto_' + fotoId,
-        thumb: payload.thumb || dataUrl,
+        thumb: thumbUrl,
         dataUrl: dataUrl
       };
+
       if (payload.jenis === 'PERBAIKAN') {
         r.fotoPerbaikan = r.fotoPerbaikan || [];
         r.fotoPerbaikan.push(fItem);
@@ -1001,7 +1152,9 @@ function handleLocalRpc(action, payload) {
 
   if (action === 'backup.list') return { ok: true, data: db.backups };
 
-  if (action === 'backup.exportJson') return { ok: true, data: db };
+  if (action === 'backup.exportJson') {
+    return { ok: true, data: db };
+  }
 
   return { ok: true, data: {} };
 }
@@ -1039,13 +1192,26 @@ function callApi(action, payload = {}) {
         })
         .api(action, payload, AppState.token);
     } else {
-      // Standalone Dedicated Database Engine (Terisolasi Mandiri)
-      try {
-        const localRes = handleLocalRpc(action, payload);
-        resolve(localRes.data);
-      } catch (err) {
-        reject(err);
-      }
+      // Standalone Dedicated Database Engine dengan IndexedDB Unlimited Storage
+      (async () => {
+        try {
+          if (action === 'public.config' && typeof initUnlimitedStorageEngine === 'function') {
+            await initUnlimitedStorageEngine();
+          }
+          if (action === 'foto.get' && typeof getPhotoBinary === 'function' && payload && payload.fotoId) {
+            const binary = await getPhotoBinary(payload.fotoId);
+            if (binary) {
+              const resObj = handleLocalRpc(action, payload);
+              if (resObj && resObj.data) resObj.data.dataUrl = binary;
+              return resolve(resObj.data);
+            }
+          }
+          const localRes = handleLocalRpc(action, payload);
+          resolve(localRes.data);
+        } catch (err) {
+          reject(err);
+        }
+      })();
     }
   });
 }
