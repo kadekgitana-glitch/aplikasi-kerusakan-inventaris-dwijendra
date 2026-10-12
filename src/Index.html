@@ -680,106 +680,125 @@
 
         <!-- ==================== VIEW: LAPORAN BULANAN RESMI ==================== -->
         <section id="view-laporan-bulanan" class="app-view" style="display:none;">
-          <div class="filter-bar">
-            <div class="filter-group">
-              <span class="filter-label">Tahun:</span>
-              <select id="lap-bul-year" class="form-select" onchange="generateLaporanBulanan()"></select>
+          <!-- Toolbar Filter & Tombol Aksi Terstruktur -->
+          <div class="report-toolbar-card">
+            <div class="report-filter-grid">
+              <div class="filter-group">
+                <span class="filter-label">Tahun:</span>
+                <select id="lap-bul-year" class="form-select" onchange="generateLaporanBulanan()"></select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Bulan Periode:</span>
+                <select id="lap-bul-month" class="form-select" onchange="generateLaporanBulanan()">
+                  <option value="ALL">Semua Bulan (Tahun Berjalan)</option>
+                  <option value="1">Januari</option>
+                  <option value="2">Februari</option>
+                  <option value="3">Maret</option>
+                  <option value="4">April</option>
+                  <option value="5">Mei</option>
+                  <option value="6">Juni</option>
+                  <option value="7">Juli</option>
+                  <option value="8">Agustus</option>
+                  <option value="9">September</option>
+                  <option value="10">Oktober</option>
+                  <option value="11">November</option>
+                  <option value="12">Desember</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Ruangan:</span>
+                <select id="lap-bul-lokasi" class="form-select" onchange="generateLaporanBulanan()">
+                  <option value="">Semua Lokasi</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <span class="filter-label">Status Penanganan:</span>
+                <select id="lap-bul-status" class="form-select" onchange="generateLaporanBulanan()">
+                  <option value="">Semua Status</option>
+                  <option value="BELUM">Belum Diperbaiki</option>
+                  <option value="SUDAH">Sudah Diperbaiki</option>
+                </select>
+              </div>
             </div>
-            <div class="filter-group">
-              <span class="filter-label">Bulan:</span>
-              <select id="lap-bul-month" class="form-select" onchange="generateLaporanBulanan()">
-                <option value="ALL">Semua Bulan (Tahun Berjalan)</option>
-                <option value="1">Januari</option>
-                <option value="2">Februari</option>
-                <option value="3">Maret</option>
-                <option value="4">April</option>
-                <option value="5">Mei</option>
-                <option value="6">Juni</option>
-                <option value="7">Juli</option>
-                <option value="8">Agustus</option>
-                <option value="9">September</option>
-                <option value="10">Oktober</option>
-                <option value="11">November</option>
-                <option value="12">Desember</option>
-              </select>
+
+            <!-- Tombol Aksi Laporan -->
+            <div class="report-action-buttons">
+              <button class="btn btn-primary" onclick="generateLaporanBulanan()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                <span>Muat Laporan</span>
+              </button>
+              <button class="btn btn-secondary" onclick="window.print()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
+                <span>🖨️ Cetak A4 Landscape</span>
+              </button>
+              <button class="btn btn-secondary" onclick="exportLaporanBulananExcel()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                <span>📥 Ekspor Excel</span>
+              </button>
+              <button class="btn btn-secondary" onclick="archiveReportPdfToDrive()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+                <span>☁️ Simpan PDF ke Drive</span>
+              </button>
             </div>
-            <div class="filter-group">
-              <span class="filter-label">Ruangan:</span>
-              <select id="lap-bul-lokasi" class="form-select" onchange="generateLaporanBulanan()">
-                <option value="">Semua Lokasi</option>
-              </select>
-            </div>
-            <div class="filter-group">
-              <span class="filter-label">Status:</span>
-              <select id="lap-bul-status" class="form-select" onchange="generateLaporanBulanan()">
-                <option value="">Semua Status</option>
-                <option value="BELUM">Belum Diperbaiki</option>
-                <option value="SUDAH">Sudah Diperbaiki</option>
-              </select>
-            </div>
-            <button class="btn btn-primary" onclick="generateLaporanBulanan()">
-              Tampilkan Laporan
-            </button>
-            <button class="btn btn-secondary" onclick="window.print()">
-              🖨️ Cetak (A4 Landscape)
-            </button>
-            <button class="btn btn-secondary" onclick="exportLaporanBulananExcel()">
-              📥 Ekspor Excel
-            </button>
-            <button class="btn btn-secondary" onclick="archiveReportPdfToDrive()">
-              ☁️ Simpan PDF ke Drive
-            </button>
           </div>
 
-          <!-- Pratinjau Dokumen Format Dinas SMK Dwijendra -->
-          <div class="card" style="padding:32px; background:#fff;">
-            <div id="preview-laporan-dinas">
-              <div style="text-align:center; margin-bottom:24px;">
-                <h2 style="font-size:16px; font-weight:800; letter-spacing:0.5px;">DATA KERUSAKAN INVENTARIS</h2>
-                <h3 style="font-size:14px; font-weight:700;" id="doc-th-pelajaran">TAHUN PELAJARAN 2026/2027</h3>
-                <h3 style="font-size:14px; font-weight:800; color:var(--primary-800);" id="doc-school-name">SMK DWIJENDRA DENPASAR</h3>
-                <h4 style="font-size:13px; font-weight:700; margin-top:4px;" id="doc-bulan-periode">BULAN: JANUARI 2026</h4>
-              </div>
+          <!-- Pratinjau Dokumen Format Dinas SMK Dwijendra (Anti-Cutoff Sheet) -->
+          <div class="card report-document-card">
+            <div class="report-scroll-hint mobile-only">
+              <span>↔️ Geser ke samping untuk melihat seluruh 11 kolom tabel dan tanda tangan resmi</span>
+            </div>
 
-              <div class="table-responsive">
-                <table class="data-table" style="border:1px solid var(--neutral-300);">
-                  <thead>
-                    <tr style="background:var(--neutral-100); text-align:center;">
-                      <th style="border:1px solid var(--neutral-300);">No</th>
-                      <th style="border:1px solid var(--neutral-300);">Nama Barang</th>
-                      <th style="border:1px solid var(--neutral-300);">Kode Inventaris</th>
-                      <th style="border:1px solid var(--neutral-300);">Jumlah</th>
-                      <th style="border:1px solid var(--neutral-300);">Lokasi/Ruangan</th>
-                      <th style="border:1px solid var(--neutral-300);">Kondisi Kerusakan</th>
-                      <th style="border:1px solid var(--neutral-300);">Dokumentasi Kerusakan</th>
-                      <th style="border:1px solid var(--neutral-300);">Tanggal Rusak</th>
-                      <th style="border:1px solid var(--neutral-300);">Tanggal Perbaikan</th>
-                      <th style="border:1px solid var(--neutral-300);">Dokumentasi Setelah Perbaikan</th>
-                      <th style="border:1px solid var(--neutral-300);">Keterangan</th>
-                    </tr>
-                  </thead>
-                  <tbody id="tbody-laporan-dinas">
-                    <tr><td colspan="11" style="text-align:center; padding:30px;">Silakan klik "Tampilkan Laporan" untuk memuat dokumen.</td></tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Blok Tanda Tangan Resmi Sesuai Format -->
-              <div style="display:flex; justify-content:space-between; margin-top:48px; page-break-inside:avoid; font-size:13px;">
-                <div style="width:40%; text-align:center;">
-                  <div>Mengetahui,</div>
-                  <div style="font-weight:600;" id="sig-kiri-jabatan">Kepala SMK Dwijendra</div>
-                  <div style="height:70px;"></div>
-                  <div style="font-weight:700; text-decoration:underline;" id="sig-kiri-nama">Ida Ayu Estri Sanjiwani, S.E., M.Pd.</div>
-                  <div id="sig-kiri-id">NIK. 530.707.240</div>
+            <div class="dinas-scroll-wrapper">
+              <div id="preview-laporan-dinas" class="dinas-sheet">
+                <!-- Kop Resmi Format Dinas -->
+                <div class="dinas-header">
+                  <h2 class="dinas-title-1">DATA KERUSAKAN INVENTARIS</h2>
+                  <h3 class="dinas-title-2" id="doc-th-pelajaran">TAHUN PELAJARAN 2026/2027</h3>
+                  <h3 class="dinas-title-3" id="doc-school-name">SMK DWIJENDRA DENPASAR</h3>
+                  <h4 class="dinas-title-4" id="doc-bulan-periode">PERIODE: SEMUA BULAN (REKAP TAHUNAN) 2026</h4>
                 </div>
 
-                <div style="width:40%; text-align:center;">
-                  <div id="sig-kanan-tgl">Denpasar, 12 Oktober 2026</div>
-                  <div style="font-weight:600;" id="sig-kanan-jabatan">Wakasek Sarana Prasarana</div>
-                  <div style="height:70px;"></div>
-                  <div style="font-weight:700; text-decoration:underline;" id="sig-kanan-nama">I Putu Kartika, S.Pd.</div>
-                  <div id="sig-kanan-id"></div>
+                <!-- Tabel Resmi 11 Kolom Sesuai Format Dinas -->
+                <div class="dinas-table-wrapper">
+                  <table class="dinas-table">
+                    <thead>
+                      <tr>
+                        <th style="width:40px; text-align:center;">No</th>
+                        <th style="min-width:180px;">Nama Barang</th>
+                        <th style="width:110px; text-align:center;">Kode Inventaris</th>
+                        <th style="width:60px; text-align:center;">Jumlah</th>
+                        <th style="min-width:130px;">Lokasi/Ruangan</th>
+                        <th style="min-width:200px;">Kondisi Kerusakan</th>
+                        <th style="width:120px; text-align:center;">Dokumentasi Kerusakan</th>
+                        <th style="width:110px; text-align:center;">Tanggal Rusak</th>
+                        <th style="width:110px; text-align:center;">Tanggal Perbaikan</th>
+                        <th style="width:120px; text-align:center;">Dokumentasi Perbaikan</th>
+                        <th style="min-width:180px;">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbody-laporan-dinas">
+                      <tr><td colspan="11" style="text-align:center; padding:30px;">Silakan klik "Muat Laporan" untuk memuat dokumen.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Blok Tanda Tangan Resmi (Anti Tumpang Tindih) -->
+                <div class="dinas-signature-block">
+                  <div class="dinas-signature-box sig-left">
+                    <div class="sig-role-label">Mengetahui,</div>
+                    <div class="sig-title" id="sig-kiri-jabatan">Kepala SMK Dwijendra</div>
+                    <div class="sig-spacer"></div>
+                    <div class="sig-name" id="sig-kiri-nama">Ida Ayu Estri Sanjiwani, S.E., M.Pd.</div>
+                    <div class="sig-id" id="sig-kiri-id">NIK. 530.707.240</div>
+                  </div>
+
+                  <div class="dinas-signature-box sig-right">
+                    <div class="sig-role-label" id="sig-kanan-tgl">Denpasar, 12 Oktober 2026</div>
+                    <div class="sig-title" id="sig-kanan-jabatan">Wakasek Sarana Prasarana</div>
+                    <div class="sig-spacer"></div>
+                    <div class="sig-name" id="sig-kanan-nama">I Putu Kartika, S.Pd.</div>
+                    <div class="sig-id" id="sig-kanan-id"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -828,7 +847,7 @@
           </div>
 
           <!-- Rekapitulasi Berdasarkan Lokasi & Daftar Pending -->
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:20px;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap:20px;">
             <div class="card">
               <div class="card-header">
                 <span class="card-title">🏢 Rekapitulasi Berdasarkan Ruangan</span>

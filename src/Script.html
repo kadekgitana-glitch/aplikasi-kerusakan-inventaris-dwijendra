@@ -1461,21 +1461,32 @@ async function generateLaporanBulanan() {
         </button>
       </td></tr>`;
     } else {
-      tbody.innerHTML = res.rows.map((r) => `
-        <tr>
-          <td style="text-align:center;">${r.no}</td>
-          <td style="font-weight:600;">${escapeHtml(r.nama)}</td>
-          <td style="text-align:center;">${escapeHtml(r.kode)}</td>
-          <td style="text-align:center; font-weight:700;">${r.jumlah}</td>
-          <td>${escapeHtml(r.lokasi)}</td>
-          <td>${escapeHtml(r.kondisi)}</td>
-          <td style="text-align:center; font-size:11px;">${r.fotoKerusakan.length ? 'Ada Foto' : '-'}</td>
-          <td style="text-align:center; white-space:nowrap;">${r.tglRusakIndo}</td>
-          <td style="text-align:center; white-space:nowrap;">${r.tglPerbaikanIndo}</td>
-          <td style="text-align:center; font-size:11px;">${r.fotoPerbaikan.length ? 'Ada Foto' : '-'}</td>
-          <td>${escapeHtml(r.keterangan)}</td>
-        </tr>
-      `).join('');
+      tbody.innerHTML = res.rows.map((r) => {
+        const fotoKCount = (r.fotoKerusakan && r.fotoKerusakan.length) || 0;
+        const fotoPCount = (r.fotoPerbaikan && r.fotoPerbaikan.length) || 0;
+        const fotoKHtml = fotoKCount > 0
+          ? `<button type="button" class="btn btn-secondary" onclick="openDetailModal('${r.id}')" style="font-size:11px; padding:3px 8px; border-radius:12px; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="Klik untuk pratinjau foto">📷 ${fotoKCount} Foto</button>`
+          : '<span style="color:var(--neutral-400);">-</span>';
+        const fotoPHtml = fotoPCount > 0
+          ? `<button type="button" class="btn btn-secondary" onclick="openDetailModal('${r.id}')" style="font-size:11px; padding:3px 8px; border-radius:12px; color:#059669; border-color:#a7f3d0; background:#ecfdf5; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="Klik untuk pratinjau foto perbaikan">📷 ${fotoPCount} Foto</button>`
+          : '<span style="color:var(--neutral-400);">-</span>';
+
+        return `
+          <tr>
+            <td style="text-align:center; font-weight:600;">${r.no}</td>
+            <td style="font-weight:700; color:var(--neutral-900); min-width:180px;">${escapeHtml(r.nama)}</td>
+            <td style="text-align:center; font-family:'JetBrains Mono', monospace; font-size:11px;">${escapeHtml(r.kode || '-')}</td>
+            <td style="text-align:center; font-weight:700;">${r.jumlah}</td>
+            <td style="min-width:130px;"><span class="badge" style="background:var(--neutral-100);">${escapeHtml(r.lokasi)}</span></td>
+            <td style="min-width:200px; line-height:1.4;">${escapeHtml(r.kondisi)}</td>
+            <td style="text-align:center; white-space:nowrap;">${fotoKHtml}</td>
+            <td style="text-align:center; white-space:nowrap; font-size:12px;">${formatDateIndo(r.tglRusak)}</td>
+            <td style="text-align:center; white-space:nowrap; font-size:12px;">${r.tglPerbaikan ? formatDateIndo(r.tglPerbaikan) : '<span style="color:var(--neutral-400);">-</span>'}</td>
+            <td style="text-align:center; white-space:nowrap;">${fotoPHtml}</td>
+            <td style="min-width:180px; font-size:12px; color:var(--neutral-600); line-height:1.4;">${escapeHtml(r.keterangan || '-')}</td>
+          </tr>
+        `;
+      }).join('');
     }
 
     // Tanda Tangan Resmi
