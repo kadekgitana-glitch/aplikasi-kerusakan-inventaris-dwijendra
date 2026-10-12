@@ -161,17 +161,125 @@ const INITIAL_DB = {
   ]
 };
 
+// --- FIREBASE CLOUD DATABASE CONFIGURATION ---
+const FIREBASE_DB_URL = 'https://sarpras-sekolah-default-rtdb.asia-southeast1.firebasedatabase.app/kerusakan_inventaris.json';
+
+// In-Memory cache yang disinkronkan dengan LocalStorage dan Firebase Cloud DB
+let _cachedDb = null;
+let _syncDebounceTimer = null;
+
 function getLocalDb() {
+  if (_cachedDb) return _cachedDb;
   const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
   if (!raw) {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(INITIAL_DB));
-    return JSON.parse(JSON.stringify(INITIAL_DB));
+    _cachedDb = JSON.parse(JSON.stringify(INITIAL_DB));
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(_cachedDb));
+    // Inisialisasi awal ke cloud jika cloud masih kosong
+    syncToFirebaseCloud(_cachedDb);
+    return _cachedDb;
   }
-  try { return JSON.parse(raw); } catch (e) { return JSON.parse(JSON.stringify(INITIAL_DB)); }
+  try {
+    _cachedDb = JSON.parse(raw);
+    return _cachedDb;
+  } catch (e) {
+    _cachedDb = JSON.parse(JSON.stringify(INITIAL_DB));
+    return _cachedDb;
+  }
 }
 
 function saveLocalDb(db) {
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(db));
+  _cachedDb = db;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(db));
+    }
+  } catch(e) {
+    console.warn('LocalStorage save warning:', e);
+  }
+  // Otomatis sinkronkan perubahan ke Firebase Cloud Realtime Database (Debounced 500ms)
+  if (typeof clearTimeout !== 'undefined' && typeof setTimeout !== 'undefined') {
+    clearTimeout(_syncDebounceTimer);
+    _syncDebounceTimer = setTimeout(() => {
+      syncToFirebaseCloud(db);
+    }, 500);
+  } else if (typeof syncToFirebaseCloud === 'function') {
+    syncToFirebaseCloud(db);
+  }
+}
+
+// Kirim data ke Firebase Cloud Realtime Database
+async function syncToFirebaseCloud(db) {
+  if (typeof fetch === "undefined") return;
+  try {
+    updateCloudStatusBadge('syncing', 'Menyimpan ke Cloud...');
+    const res = await fetch(FIREBASE_DB_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(db)
+    });
+    if (res.ok) {
+      updateCloudStatusBadge('online', 'Terhubung ke Firebase Cloud');
+    } else {
+      updateCloudStatusBadge('warning', 'Tersimpan Lokal (Sync Tertunda)');
+    }
+  } catch(err) {
+    console.warn('Firebase Cloud sync warning (offline/retry):', err);
+    updateCloudStatusBadge('warning', 'Mode Offline (Data Tersimpan di Perangkat)');
+  }
+}
+
+// Ambil data terbaru dari Firebase Cloud Realtime Database saat startup / polling
+async function pullFromFirebaseCloud() {
+  if (typeof fetch === "undefined") return getLocalDb();
+  try {
+    updateCloudStatusBadge('syncing', 'Menghubungkan ke Cloud...');
+    const res = await fetch(FIREBASE_DB_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const cloudData = await res.json();
+    if (cloudData && typeof cloudData === 'object' && cloudData.laporan) {
+      _cachedDb = cloudData;
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cloudData));
+      updateCloudStatusBadge('online', 'Terhubung ke Firebase Cloud (Real-time)');
+      return cloudData;
+    } else {
+      // Cloud masih kosong atau baru pertama kali, unggah data default/lokal saat ini ke cloud
+      const current = getLocalDb();
+      await syncToFirebaseCloud(current);
+      updateCloudStatusBadge('online', 'Terhubung ke Firebase Cloud (Inisialisasi)');
+      return current;
+    }
+  } catch(err) {
+    console.warn('Gagal memuat dari Firebase Cloud, beralih ke cache lokal:', err);
+    updateCloudStatusBadge('warning', 'Mode Offline (Cache Lokal Aktif)');
+    return getLocalDb();
+  }
+}
+
+// Update UI Badge Status Koneksi Cloud di Topbar
+function updateCloudStatusBadge(state, label) {
+  if (typeof document === 'undefined') return;
+  const badge = document.getElementById('cloud-sync-badge');
+  const dot = document.getElementById('cloud-sync-dot');
+  const txt = document.getElementById('cloud-sync-text');
+  if (!badge || !dot || !txt) return;
+  badge.style.display = 'inline-flex';
+  txt.textContent = label;
+  if (state === 'online') {
+    dot.style.background = '#10b981'; // Green
+    badge.style.background = 'rgba(16, 185, 129, 0.12)';
+    badge.style.color = '#065f46';
+    badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+  } else if (state === 'syncing') {
+    dot.style.background = '#3b82f6'; // Blue
+    badge.style.background = 'rgba(59, 130, 246, 0.12)';
+    badge.style.color = '#1e40af';
+    badge.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+  } else {
+    dot.style.background = '#f59e0b'; // Amber
+    badge.style.background = 'rgba(245, 158, 11, 0.12)';
+    badge.style.color = '#92400e';
+    badge.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+  }
 }
 
 // Helper untuk generate SVG visualisasi foto jika belum ada binary data
@@ -1032,13 +1140,19 @@ function callApi(action, payload = {}) {
         })
         .api(action, payload, AppState.token);
     } else {
-      // Standalone Browser Mode (Local Database Engine)
-      try {
-        const localRes = handleLocalRpc(action, payload);
-        resolve(localRes.data);
-      } catch (err) {
-        reject(err);
-      }
+      // Standalone Browser Mode dengan Firebase Cloud Realtime Database Backend
+      (async () => {
+        try {
+          // Bila inisialisasi awal atau public.config, lakukan sync data dari cloud
+          if (action === 'public.config' && typeof pullFromFirebaseCloud === 'function') {
+            try { await pullFromFirebaseCloud(); } catch(e) {}
+          }
+          const localRes = handleLocalRpc(action, payload);
+          resolve(localRes.data);
+        } catch (err) {
+          reject(err);
+        }
+      })();
     }
   });
 }

@@ -192,7 +192,11 @@
             <span class="page-desc" id="page-subtitle">Ringkasan kondisi inventaris sekolah</span>
           </div>
         </div>
-        <div class="header-right">
+        <div class="header-right" style="display:flex; align-items:center; gap:10px;">
+          <div id="cloud-sync-badge" title="Status sinkronisasi Firebase Cloud Database" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 12px; border-radius:20px; border:1px solid rgba(16,185,129,0.3); background:rgba(16,185,129,0.12); color:#065f46; transition:all 0.3s ease;">
+            <span id="cloud-sync-dot" style="width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block;"></span>
+            <span id="cloud-sync-text">Terhubung ke Cloud</span>
+          </div>
           <button class="quick-btn" onclick="navigateTo('input')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
             <span>+ Input Kerusakan</span>
