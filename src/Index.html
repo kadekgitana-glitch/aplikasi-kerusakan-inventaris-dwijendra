@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sistem Informasi Kerusakan Inventaris — SMK Dwijendra Denpasar</title>
+  
+  <!-- Font Awesome / SVG Icons Ready & Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <!-- External Libraries (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- CSS Design System -->
+  <?!= include('Style'); ?>
+</head>
+<body>
+
+  <!-- =========================================================================
+       1. HALAMAN LOGIN
+       ========================================================================= -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="login-brand-header">
+        <div class="login-logo-wrap">
+          <img id="login-logo-img" src="" alt="Logo Sekolah" style="display:none;">
+          <svg id="login-logo-fallback" width="36" height="36" viewBox="0 0 24 24" fill="#1e3a8a">
+            <path d="M12 2L2 7v2h20V7L12 2zm8 9H4v8h2v-6h3v6h2v-6h3v6h2v-6h4v6h2v-8h-2zM2 20v2h20v-2H2z"/>
+          </svg>
+        </div>
+        <h1 class="login-app-name" id="login-app-title">SISTEM INFORMASI KERUSAKAN INVENTARIS</h1>
+        <p class="login-school-name" id="login-school-subtitle">SMK DWIJENDRA DENPASAR</p>
+      </div>
+
+      <form id="form-login" onsubmit="handleLoginSubmit(event)">
+        <div class="form-group" id="group-login-user">
+          <label class="form-label" for="login-username">Username / ID Pengguna</label>
+          <input type="text" id="login-username" class="form-input" placeholder="Masukkan username" required autocomplete="username" style="width:100%;">
+          <div class="field-error" id="err-login-username"></div>
+        </div>
+
+        <div class="form-group" id="group-login-pass">
+          <label class="form-label" for="login-password">Kata Sandi</label>
+          <div style="position:relative;">
+            <input type="password" id="login-password" class="form-input" placeholder="Masukkan kata sandi" required autocomplete="current-password" style="width:100%; padding-right:38px;">
+            <button type="button" onclick="togglePasswordVisibility('login-password')" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--neutral-500); cursor:pointer;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            </button>
+          </div>
+          <div class="field-error" id="err-login-password"></div>
+        </div>
+
+        <button type="submit" id="btn-login-submit" class="btn btn-primary" style="width:100%; margin-top:8px; height:44px;">
+          <span>Masuk ke Sistem</span>
+        </button>
+
+        <div style="text-align:center; margin:14px 0 10px 0; position:relative;">
+          <hr style="border:none; border-top:1px solid var(--neutral-200);">
+          <span style="position:absolute; top:-9px; left:50%; transform:translateX(-50%); background:#fff; padding:0 10px; font-size:11px; color:var(--neutral-400);">ATAU</span>
+        </div>
+
+        <button type="button" onclick="handleGoogleLogin()" class="btn btn-secondary" style="width:100%; height:40px; margin-bottom:12px;">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.36 24 12 24z"/><path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.14-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/></svg>
+          <span>Masuk dengan Akun Google</span>
+        </button>
+
+        <!-- Panel Akses Cepat Demo (1-Klik) -->
+        <div style="background:#f0f7ff; border:1px solid #bfdbfe; border-radius:var(--radius-md); padding:12px; margin-top:8px;">
+          <div style="font-size:11px; font-weight:700; color:#1e40af; margin-bottom:8px; text-align:center;">
+            ⚡ KLIK MASUK CEPAT (AKUN UJI COBA):
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-bottom:8px;">
+            <button type="button" onclick="quickLogin('admin')" class="btn btn-secondary" style="font-size:11px; padding:6px 2px; justify-content:center; background:#fff; border-color:#93c5fd; color:#1e3a8a; font-weight:600;" title="Login sebagai Administrator">
+              👑 Admin
+            </button>
+            <button type="button" onclick="quickLogin('petugas')" class="btn btn-secondary" style="font-size:11px; padding:6px 2px; justify-content:center; background:#fff; border-color:#93c5fd; color:#1e3a8a; font-weight:600;" title="Login sebagai Petugas Sarpras">
+              🔧 Petugas
+            </button>
+            <button type="button" onclick="quickLogin('kepsek')" class="btn btn-secondary" style="font-size:11px; padding:6px 2px; justify-content:center; background:#fff; border-color:#93c5fd; color:#1e3a8a; font-weight:600;" title="Login sebagai Kepala Sekolah">
+              🎓 Kepsek
+            </button>
+          </div>
+          <div style="font-size:11px; color:#475569; line-height:1.4;">
+            <div>• <b>Admin</b>: user <code>admin</code> | sandi <code>Admin1234!</code> / <code>admin</code></div>
+            <div>• <b>Petugas</b>: user <code>petugas</code> | sandi <code>Petugas1234!</code> / <code>petugas</code></div>
+            <div>• <b>Kepsek</b>: user <code>kepsek</code> | sandi <code>Kepsek1234!</code> / <code>kepsek</code></div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       2. STRUKTUR UTAMA APLIKASI
+       ========================================================================= -->
+  <div id="app-layout" style="display:none;">
+
+    <!-- SIDEBAR NAVIGASI -->
+    <aside class="app-sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-logo-wrap">
+          <img id="sidebar-logo-img" src="" alt="Logo" style="display:none;" class="brand-logo-img">
+          <span id="sidebar-logo-icon" class="brand-logo-icon">🏢</span>
+        </div>
+        <div class="brand-info">
+          <span class="brand-title" id="sidebar-app-name">Sarpras Inventaris</span>
+          <span class="brand-subtitle" id="sidebar-school-name">SMK Dwijendra</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Menu Utama</div>
+        <a class="nav-item active" onclick="navigateTo('dashboard')">
+          <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+          <span>Dashboard</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('input')">
+          <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+          <span>Input Data Kerusakan</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('data')">
+          <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
+          <span>Data Kerusakan</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('belum')">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          <span>Belum Diperbaiki</span>
+          <span class="nav-badge" id="nav-badge-belum">0</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('sudah')">
+          <svg viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+          <span>Sudah Diperbaiki</span>
+        </a>
+
+        <div class="nav-section-title">Laporan & Arsip</div>
+        <a class="nav-item" onclick="navigateTo('laporan-bulanan')">
+          <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>
+          <span>Laporan Bulanan</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('laporan-tahunan')">
+          <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
+          <span>Laporan Tahunan</span>
+        </a>
+
+        <div class="nav-section-title admin-only">Administrasi</div>
+        <a class="nav-item admin-only" onclick="navigateTo('import')">
+          <svg viewBox="0 0 24 24"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/></svg>
+          <span>Impor Data Excel</span>
+        </a>
+        <a class="nav-item" onclick="navigateTo('pengaturan')">
+          <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+          <span>Pengaturan</span>
+        </a>
+        <a class="nav-item admin-only" onclick="navigateTo('users')">
+          <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          <span>Kelola Pengguna</span>
+        </a>
+        <a class="nav-item admin-only" onclick="navigateTo('log')">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span>Log Aktivitas</span>
+        </a>
+        <a class="nav-item admin-only" onclick="navigateTo('backup')">
+          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+          <span>Cadangan Data</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-user">
+        <div class="user-avatar" id="user-avatar-text">A</div>
+        <div class="user-info">
+          <div class="user-name" id="user-display-name">Administrator</div>
+          <div class="user-role-badge" id="user-display-role">Administrator</div>
+        </div>
+        <button onclick="handleLogout()" title="Keluar" style="background:none; border:none; color:rgba(255,255,255,0.6); cursor:pointer; padding:4px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="app-main">
+      <header class="app-header">
+        <div class="header-left">
+          <button class="mobile-menu-btn" onclick="toggleSidebar()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+          </button>
+          <div class="page-heading">
+            <h2 class="page-title" id="page-title">Dashboard</h2>
+            <span class="page-desc" id="page-subtitle">Ringkasan kondisi inventaris sekolah</span>
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="quick-btn" onclick="navigateTo('input')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            <span>+ Input Kerusakan</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="app-content">
+
+        <!-- ==================== VIEW: DASHBOARD ==================== -->
+        <section id="view-dashboard" class="app-view">
+          <!-- Filter Dashboard -->
+          <div class="filter-bar">
+            <div class="filter-group">
+              <span class="filter-label">Tahun:</span>
+              <select id="dash-filter-year" class="form-select" onchange="loadDashboard()">
+                <!-- Opsi tahun dimuat via JS -->
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Bulan:</span>
+              <select id="dash-filter-month" class="form-select" onchange="loadDashboard()">
+                <option value="">Semua Bulan (1 Tahun)</option>
+                <option value="1">Januari</option>
+                <option value="2">Februari</option>
+                <option value="3">Maret</option>
+                <option value="4">April</option>
+                <option value="5">Mei</option>
+                <option value="6">Juni</option>
+                <option value="7">Juli</option>
+                <option value="8">Agustus</option>
+                <option value="9">September</option>
+                <option value="10">Oktober</option>
+                <option value="11">November</option>
+                <option value="12">Desember</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Lokasi:</span>
+              <select id="dash-filter-lokasi" class="form-select" onchange="loadDashboard()">
+                <option value="">Semua Ruangan</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Status:</span>
+              <select id="dash-filter-status" class="form-select" onchange="loadDashboard()">
+                <option value="">Semua Status</option>
+                <option value="BELUM">Belum Diperbaiki</option>
+                <option value="SUDAH">Sudah Diperbaiki</option>
+              </select>
+            </div>
+            <button class="btn btn-secondary" onclick="resetDashboardFilter()" style="margin-left:auto; height:38px;">
+              Reset Filter
+            </button>
+          </div>
+
+          <!-- 6 Kartu Statistik -->
+          <div class="stats-grid">
+            <div class="stat-card c-blue">
+              <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10H7v-2h10v2z"/></svg></div>
+              <div class="stat-content">
+                <div class="stat-label">Total Kejadian</div>
+                <div class="stat-value" id="stat-total-kejadian">0</div>
+                <div class="stat-sub">Laporan kerusakan tercatat</div>
+              </div>
+            </div>
+            <div class="stat-card c-purple">
+              <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2z"/></svg></div>
+              <div class="stat-content">
+                <div class="stat-label">Barang Terdampak</div>
+                <div class="stat-value" id="stat-total-barang">0</div>
+                <div class="stat-sub">Akumulasi total unit barang</div>
+              </div>
+            </div>
+            <div class="stat-card c-red">
+              <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div>
+              <div class="stat-content">
+                <div class="stat-label">Belum Diperbaiki</div>
+                <div class="stat-value" id="stat-belum">0</div>
+                <div class="stat-sub">Menunggu penanganan</div>
+              </div>
+            </div>
+            <div class="stat-card c-green">
+              <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg></div>
+              <div class="stat-content">
+                <div class="stat-label">Sudah Diperbaiki</div>
+                <div class="stat-value" id="stat-sudah">0</div>
+                <div class="stat-sub">Selesai ditangani</div>
+              </div>
+            </div>
+            <div class="stat-card c-amber">
+              <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg></div>
+              <div class="stat-content">
+                <div class="stat-label">Bulan Berjalan</div>
+                <div class="stat-value" id="stat-bulan-berjalan">0</div>
+                <div class="stat-sub">Kejadian di bulan ini</div>
+              </div>
+            </div>
+            <div class="stat-card c-cyan">
+              <div class="stat-icon"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/></svg></div>
+              <div class="stat-content">
+                <div class="stat-label">Persentase Selesai</div>
+                <div class="stat-value" id="stat-persentase">0%</div>
+                <div class="stat-sub">Tingkat perbaikan total</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4 Visualisasi Grafik -->
+          <div class="charts-grid-2">
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">1. Tren Kerusakan Per Bulan (Jan - Des)</span>
+              </div>
+              <div class="chart-canvas-wrap">
+                <canvas id="chart-tren-bulanan"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">2. Proporsi Status Perbaikan</span>
+              </div>
+              <div class="chart-canvas-wrap">
+                <canvas id="chart-status-donut"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">3. Kerusakan Berdasarkan Lokasi / Ruangan</span>
+              </div>
+              <div class="chart-canvas-wrap">
+                <canvas id="chart-lokasi-bar"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-header">
+                <span class="chart-title">4. Kerusakan Berdasarkan Nama Barang</span>
+              </div>
+              <div class="chart-canvas-wrap">
+                <canvas id="chart-barang-bar"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bagian: Perlu Tindak Lanjut & Aktivitas Terbaru -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:20px;">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title" style="color:var(--danger-600);">
+                  ⚠️ Perlu Tindak Lanjut Segera (Urut Terlama)
+                </span>
+                <button class="btn btn-secondary" onclick="navigateTo('belum')" style="font-size:11px; padding:4px 8px;">
+                  Lihat Semua
+                </button>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Tgl Rusak</th>
+                      <th>Barang</th>
+                      <th>Ruangan</th>
+                      <th>Kondisi</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-perlu-tindak">
+                    <tr><td colspan="5" style="text-align:center; color:var(--neutral-400);">Memuat data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">🕒 Aktivitas & Laporan Terbaru</span>
+                <button class="btn btn-secondary" onclick="navigateTo('data')" style="font-size:11px; padding:4px 8px;">
+                  Lihat Semua
+                </button>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Barang</th>
+                      <th>Ruangan</th>
+                      <th>Status</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-aktivitas-terbaru">
+                    <tr><td colspan="5" style="text-align:center; color:var(--neutral-400);">Memuat data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: INPUT DATA KERUSAKAN ==================== -->
+        <section id="view-input" class="app-view" style="display:none;">
+          <form id="form-kerusakan" onsubmit="handleFormLaporanSubmit(event)">
+            <input type="hidden" id="input-laporan-id" value="">
+            <input type="hidden" id="input-laporan-versi" value="">
+
+            <div class="form-grid-3">
+              <!-- BAGIAN A: INFORMASI BARANG -->
+              <div class="form-section-card">
+                <div class="form-section-header">
+                  <div class="section-number">A</div>
+                  <div class="section-title">Informasi Barang</div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Nomor Pencatatan (Otomatis)</label>
+                  <input type="text" id="input-no-pencatatan" class="form-input" value="Dibuat otomatis oleh sistem saat disimpan" readonly style="width:100%; background:var(--neutral-100); color:var(--neutral-500); font-family:'JetBrains Mono', monospace; font-size:12px;">
+                </div>
+
+                <div class="form-group" id="grp-input-nama">
+                  <label class="form-label" for="input-nama-barang">Nama Barang <span class="req">*</span></label>
+                  <input list="list-master-barang" id="input-nama-barang" class="form-input" placeholder="Ketik atau pilih nama barang (mis: AC Daikin, Meja)" required style="width:100%;">
+                  <datalist id="list-master-barang"></datalist>
+                  <div class="field-error" id="err-input-nama"></div>
+                </div>
+
+                <div class="form-group" id="grp-input-kode">
+                  <label class="form-label" for="input-kode-inventaris">Kode Inventaris</label>
+                  <input type="text" id="input-kode-inventaris" class="form-input" placeholder="Contoh: C14.03 (opsional)" style="width:100%;">
+                  <div class="field-error" id="err-input-kode"></div>
+                </div>
+
+                <div class="form-group" id="grp-input-jumlah">
+                  <label class="form-label" for="input-jumlah-barang">Jumlah Barang Terdampak <span class="req">*</span></label>
+                  <input type="number" id="input-jumlah-barang" class="form-input" min="1" step="1" value="1" required style="width:100%;">
+                  <div class="field-error" id="err-input-jumlah"></div>
+                </div>
+
+                <div class="form-group" id="grp-input-lokasi">
+                  <label class="form-label" for="input-lokasi-barang">Lokasi / Ruangan <span class="req">*</span></label>
+                  <select id="input-lokasi-barang" class="form-select" onchange="checkLokasiLainnya(this)" required style="width:100%;">
+                    <option value="">-- Pilih Lokasi / Ruangan --</option>
+                  </select>
+                  <input type="text" id="input-lokasi-lainnya" class="form-input" placeholder="Ketik nama lokasi baru..." style="width:100%; margin-top:8px; display:none;">
+                  <div class="field-error" id="err-input-lokasi"></div>
+                </div>
+              </div>
+
+              <!-- BAGIAN B: INFORMASI KERUSAKAN -->
+              <div class="form-section-card">
+                <div class="form-section-header">
+                  <div class="section-number">B</div>
+                  <div class="section-title">Informasi Kerusakan</div>
+                </div>
+
+                <div class="form-group" id="grp-input-kondisi">
+                  <label class="form-label" for="input-kondisi-kerusakan">Kondisi Kerusakan <span class="req">*</span></label>
+                  <textarea id="input-kondisi-kerusakan" class="form-textarea" placeholder="Jelaskan kondisi kerusakan secara konkret (mis: tidak dingin, pipa bocor, keran patah)" required></textarea>
+                  <div class="field-error" id="err-input-kondisi"></div>
+                </div>
+
+                <div class="form-group" id="grp-input-tgl-rusak">
+                  <label class="form-label" for="input-tgl-rusak">Tanggal Rusak <span class="req">*</span></label>
+                  <input type="date" id="input-tgl-rusak" class="form-input" required style="width:100%;">
+                  <div class="field-error" id="err-input-tgl-rusak"></div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Dokumentasi Kerusakan (Foto)</label>
+                  <div class="dropzone" onclick="triggerFileInput('input-file-kerusakan')">
+                    <svg class="dropzone-icon" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                    <div class="dropzone-text">Pilih atau seret foto kerusakan di sini</div>
+                    <div class="dropzone-hint">Format JPG, JPEG, PNG, WEBP (Maks 10 foto)</div>
+                  </div>
+                  <input type="file" id="input-file-kerusakan" accept="image/jpeg,image/png,image/webp" multiple style="display:none;" onchange="handlePhotoSelect(event, 'kerusakan')">
+                  <div class="photo-preview-grid" id="preview-grid-kerusakan"></div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="input-keterangan">Keterangan Tambahan</label>
+                  <textarea id="input-keterangan" class="form-textarea" placeholder="Catatan hasil pemeriksaan awal atau tindak lanjut (opsional)"></textarea>
+                </div>
+              </div>
+
+              <!-- BAGIAN C: INFORMASI PERBAIKAN -->
+              <div class="form-section-card">
+                <div class="form-section-header">
+                  <div class="section-number">C</div>
+                  <div class="section-title">Informasi Perbaikan</div>
+                </div>
+
+                <div style="background:var(--neutral-50); border:1px solid var(--neutral-200); border-radius:var(--radius-md); padding:12px; margin-bottom:14px; font-size:12px; color:var(--neutral-600);">
+                  ℹ️ Bagian ini dapat dikosongkan saat pertama kali melapor. Status akan otomatis menjadi <b>"Belum Diperbaiki"</b> hingga tanggal perbaikan diisi.
+                </div>
+
+                <div class="form-group" id="grp-input-tgl-perbaikan">
+                  <label class="form-label" for="input-tgl-perbaikan">Tanggal Perbaikan (Bila Selesai)</label>
+                  <input type="date" id="input-tgl-perbaikan" class="form-input" style="width:100%;">
+                  <div class="field-error" id="err-input-tgl-perbaikan"></div>
+                </div>
+
+                <!-- Opsi Koreksi Historis (Khusus Admin) -->
+                <div class="form-group admin-only" id="wrap-koreksi-historis" style="display:none; background:#fef3c7; padding:10px; border-radius:var(--radius-md); border:1px solid #fde68a;">
+                  <label style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:600; color:#92400e; cursor:pointer;">
+                    <input type="checkbox" id="chk-koreksi-historis" onchange="toggleAlasanKoreksi(this)">
+                    <span>Izinkan tanggal perbaikan mendahului tanggal rusak (Koreksi Data Historis)</span>
+                  </label>
+                  <input type="text" id="input-alasan-koreksi" class="form-input" placeholder="Alasan koreksi historis wajib diisi..." style="width:100%; margin-top:8px; display:none;">
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Dokumentasi Setelah Perbaikan (Foto)</label>
+                  <div class="dropzone" onclick="triggerFileInput('input-file-perbaikan')">
+                    <svg class="dropzone-icon" viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+                    <div class="dropzone-text">Pilih foto setelah perbaikan</div>
+                    <div class="dropzone-hint">Format JPG, JPEG, PNG, WEBP</div>
+                  </div>
+                  <input type="file" id="input-file-perbaikan" accept="image/jpeg,image/png,image/webp" multiple style="display:none;" onchange="handlePhotoSelect(event, 'perbaikan')">
+                  <div class="photo-preview-grid" id="preview-grid-perbaikan"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer Tombol Formulir -->
+            <div class="form-footer-actions">
+              <button type="button" class="btn btn-secondary" onclick="resetFormKerusakan()">
+                Reset Formulir
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="navigateTo('data')">
+                Batal
+              </button>
+              <button type="button" id="btn-simpan-input-baru" class="btn btn-secondary" onclick="submitLaporanForm(true)">
+                Simpan & Input Baru
+              </button>
+              <button type="button" id="btn-simpan-laporan" class="btn btn-primary" onclick="submitLaporanForm(false)">
+                Simpan Data
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <!-- ==================== VIEW: DATA KERUSAKAN INVENTARIS ==================== -->
+        <section id="view-data" class="app-view" style="display:none;">
+          <div class="filter-bar">
+            <div class="search-input-wrap">
+              <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              <input type="text" id="tbl-filter-search" class="form-input" placeholder="Cari nama barang, kode, ruangan, kondisi, atau ID..." oninput="debounceSearchData()">
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Tahun:</span>
+              <select id="tbl-filter-year" class="form-select" onchange="loadTableData(1)"></select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Bulan:</span>
+              <select id="tbl-filter-month" class="form-select" onchange="loadTableData(1)">
+                <option value="">Semua Bulan</option>
+                <option value="1">Januari</option>
+                <option value="2">Februari</option>
+                <option value="3">Maret</option>
+                <option value="4">April</option>
+                <option value="5">Mei</option>
+                <option value="6">Juni</option>
+                <option value="7">Juli</option>
+                <option value="8">Agustus</option>
+                <option value="9">September</option>
+                <option value="10">Oktober</option>
+                <option value="11">November</option>
+                <option value="12">Desember</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Ruangan:</span>
+              <select id="tbl-filter-lokasi" class="form-select" onchange="loadTableData(1)">
+                <option value="">Semua Lokasi</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Status:</span>
+              <select id="tbl-filter-status" class="form-select" onchange="loadTableData(1)">
+                <option value="">Semua Status</option>
+                <option value="BELUM">Belum Diperbaiki</option>
+                <option value="SUDAH">Sudah Diperbaiki</option>
+              </select>
+            </div>
+            <div class="filter-group admin-only">
+              <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer;">
+                <input type="checkbox" id="tbl-filter-arsip" onchange="loadTableData(1)">
+                <span>Tampilkan Arsip</span>
+              </label>
+            </div>
+            <button class="btn btn-secondary" onclick="exportCurrentTableExcel()" style="margin-left:auto; height:38px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+              <span>Ekspor Excel</span>
+            </button>
+          </div>
+
+          <div class="card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>ID Laporan</th>
+                    <th>Nama Barang</th>
+                    <th>Kode</th>
+                    <th>Jumlah</th>
+                    <th>Lokasi/Ruangan</th>
+                    <th>Kondisi Kerusakan</th>
+                    <th>Tgl Rusak</th>
+                    <th>Tgl Perbaikan</th>
+                    <th>Status</th>
+                    <th>Dokumentasi</th>
+                    <th>Keterangan</th>
+                    <th style="text-align:center;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-data-kerusakan">
+                  <tr><td colspan="13" style="text-align:center; padding:30px; color:var(--neutral-400);">Memuat data kerusakan...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="pagination-wrap">
+              <div class="pagination-info" id="tbl-pagination-info">
+                Menampilkan 0 data
+              </div>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="display:flex; align-items:center; gap:6px; font-size:12px;">
+                  <span>Baris per halaman:</span>
+                  <select id="tbl-page-size" class="form-select" style="height:32px; padding:0 8px;" onchange="loadTableData(1)">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+                <div class="pagination-controls" id="tbl-pagination-controls"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: DATA BELUM DIPERBAIKI ==================== -->
+        <section id="view-belum" class="app-view" style="display:none;">
+          <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:var(--radius-md); padding:16px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <h3 style="color:#991b1b; font-size:15px; font-weight:700;">Daftar Kerusakan Belum Diperbaiki</h3>
+              <p style="color:#b91c1c; font-size:12px;">Diurutkan dari tanggal kejadian terlama terlebih dahulu untuk prioritas penanganan.</p>
+            </div>
+            <div style="font-size:22px; font-weight:800; color:#dc2626;" id="count-belum-badge">0 Item</div>
+          </div>
+
+          <div class="card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>Tgl Rusak</th>
+                    <th>Barang</th>
+                    <th>Kode</th>
+                    <th>Jumlah</th>
+                    <th>Lokasi/Ruangan</th>
+                    <th>Kondisi Kerusakan</th>
+                    <th>Keterangan</th>
+                    <th style="text-align:center;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-data-belum">
+                  <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--neutral-400);">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: DATA SUDAH DIPERBAIKI ==================== -->
+        <section id="view-sudah" class="app-view" style="display:none;">
+          <div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:var(--radius-md); padding:16px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between;">
+            <div>
+              <h3 style="color:#065f46; font-size:15px; font-weight:700;">Daftar Kerusakan Selesai Diperbaiki</h3>
+              <p style="color:#047857; font-size:12px;">Memuat seluruh laporan yang telah memiliki tanggal penyelesaian valid dan foto hasil perbaikan.</p>
+            </div>
+            <div style="font-size:22px; font-weight:800; color:#059669;" id="count-sudah-badge">0 Item</div>
+          </div>
+
+          <div class="card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>ID</th>
+                    <th>Barang</th>
+                    <th>Ruangan</th>
+                    <th>Tgl Rusak</th>
+                    <th>Tgl Perbaikan</th>
+                    <th>Dokumentasi Sebelum & Sesudah</th>
+                    <th>Catatan Perbaikan</th>
+                    <th style="text-align:center;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-data-sudah">
+                  <tr><td colspan="9" style="text-align:center; padding:30px; color:var(--neutral-400);">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: LAPORAN BULANAN RESMI ==================== -->
+        <section id="view-laporan-bulanan" class="app-view" style="display:none;">
+          <div class="filter-bar">
+            <div class="filter-group">
+              <span class="filter-label">Tahun:</span>
+              <select id="lap-bul-year" class="form-select"></select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Bulan:</span>
+              <select id="lap-bul-month" class="form-select">
+                <option value="1">Januari</option>
+                <option value="2">Februari</option>
+                <option value="3">Maret</option>
+                <option value="4">April</option>
+                <option value="5">Mei</option>
+                <option value="6">Juni</option>
+                <option value="7">Juli</option>
+                <option value="8">Agustus</option>
+                <option value="9">September</option>
+                <option value="10">Oktober</option>
+                <option value="11">November</option>
+                <option value="12">Desember</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Ruangan:</span>
+              <select id="lap-bul-lokasi" class="form-select">
+                <option value="">Semua Lokasi</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <span class="filter-label">Status:</span>
+              <select id="lap-bul-status" class="form-select">
+                <option value="">Semua Status</option>
+                <option value="BELUM">Belum Diperbaiki</option>
+                <option value="SUDAH">Sudah Diperbaiki</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" onclick="generateLaporanBulanan()">
+              Tampilkan Laporan
+            </button>
+            <button class="btn btn-secondary" onclick="window.print()">
+              🖨️ Cetak (A4 Landscape)
+            </button>
+            <button class="btn btn-secondary" onclick="exportLaporanBulananExcel()">
+              📥 Ekspor Excel
+            </button>
+            <button class="btn btn-secondary" onclick="archiveReportPdfToDrive()">
+              ☁️ Simpan PDF ke Drive
+            </button>
+          </div>
+
+          <!-- Pratinjau Dokumen Format Dinas SMK Dwijendra -->
+          <div class="card" style="padding:32px; background:#fff;">
+            <div id="preview-laporan-dinas">
+              <div style="text-align:center; margin-bottom:24px;">
+                <h2 style="font-size:16px; font-weight:800; letter-spacing:0.5px;">DATA KERUSAKAN INVENTARIS</h2>
+                <h3 style="font-size:14px; font-weight:700;" id="doc-th-pelajaran">TAHUN PELAJARAN 2026/2027</h3>
+                <h3 style="font-size:14px; font-weight:800; color:var(--primary-800);" id="doc-school-name">SMK DWIJENDRA DENPASAR</h3>
+                <h4 style="font-size:13px; font-weight:700; margin-top:4px;" id="doc-bulan-periode">BULAN: JANUARI 2026</h4>
+              </div>
+
+              <div class="table-responsive">
+                <table class="data-table" style="border:1px solid var(--neutral-300);">
+                  <thead>
+                    <tr style="background:var(--neutral-100); text-align:center;">
+                      <th style="border:1px solid var(--neutral-300);">No</th>
+                      <th style="border:1px solid var(--neutral-300);">Nama Barang</th>
+                      <th style="border:1px solid var(--neutral-300);">Kode Inventaris</th>
+                      <th style="border:1px solid var(--neutral-300);">Jumlah</th>
+                      <th style="border:1px solid var(--neutral-300);">Lokasi/Ruangan</th>
+                      <th style="border:1px solid var(--neutral-300);">Kondisi Kerusakan</th>
+                      <th style="border:1px solid var(--neutral-300);">Dokumentasi Kerusakan</th>
+                      <th style="border:1px solid var(--neutral-300);">Tanggal Rusak</th>
+                      <th style="border:1px solid var(--neutral-300);">Tanggal Perbaikan</th>
+                      <th style="border:1px solid var(--neutral-300);">Dokumentasi Setelah Perbaikan</th>
+                      <th style="border:1px solid var(--neutral-300);">Keterangan</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-laporan-dinas">
+                    <tr><td colspan="11" style="text-align:center; padding:30px;">Silakan klik "Tampilkan Laporan" untuk memuat dokumen.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Blok Tanda Tangan Resmi Sesuai Format -->
+              <div style="display:flex; justify-content:space-between; margin-top:48px; page-break-inside:avoid; font-size:13px;">
+                <div style="width:40%; text-align:center;">
+                  <div>Mengetahui,</div>
+                  <div style="font-weight:600;" id="sig-kiri-jabatan">Kepala SMK Dwijendra</div>
+                  <div style="height:70px;"></div>
+                  <div style="font-weight:700; text-decoration:underline;" id="sig-kiri-nama">Ida Ayu Estri Sanjiwani, S.E., M.Pd.</div>
+                  <div id="sig-kiri-id">NIK. 530.707.240</div>
+                </div>
+
+                <div style="width:40%; text-align:center;">
+                  <div id="sig-kanan-tgl">Denpasar, 12 Oktober 2026</div>
+                  <div style="font-weight:600;" id="sig-kanan-jabatan">Wakasek Sarana Prasarana</div>
+                  <div style="height:70px;"></div>
+                  <div style="font-weight:700; text-decoration:underline;" id="sig-kanan-nama">I Putu Kartika, S.Pd.</div>
+                  <div id="sig-kanan-id"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: LAPORAN TAHUNAN ==================== -->
+        <section id="view-laporan-tahunan" class="app-view" style="display:none;">
+          <div class="filter-bar">
+            <div class="filter-group">
+              <span class="filter-label">Pilih Tahun:</span>
+              <select id="lap-tahunan-year" class="form-select"></select>
+            </div>
+            <button class="btn btn-primary" onclick="generateLaporanTahunan()">
+              Tampilkan Rekapitulasi Tahunan
+            </button>
+            <button class="btn btn-secondary" onclick="exportLaporanTahunanExcel()">
+              📥 Ekspor Excel Tahunan
+            </button>
+          </div>
+
+          <div class="stats-grid" id="stats-tahunan-grid">
+            <!-- 5 kartu statistik tahunan dimuat via JS -->
+          </div>
+
+          <!-- Rekapitulasi 12 Bulan -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📊 Rekapitulasi Kerusakan Per Bulan (12 Bulan)</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Bulan</th>
+                    <th>Kejadian Kerusakan</th>
+                    <th>Total Barang (Unit)</th>
+                    <th>Sudah Diperbaiki</th>
+                    <th>Belum Diperbaiki</th>
+                    <th>Persentase Selesai</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-rekap-bulanan"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Rekapitulasi Berdasarkan Lokasi & Daftar Pending -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:20px;">
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">🏢 Rekapitulasi Berdasarkan Ruangan</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Lokasi / Ruangan</th>
+                      <th>Kejadian</th>
+                      <th>Jumlah Unit</th>
+                      <th>Selesai</th>
+                      <th>Belum</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-rekap-lokasi"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title" style="color:var(--danger-600);">⏳ Daftar Kerusakan Yang Belum Terselesaikan</span>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Tgl Rusak</th>
+                      <th>Barang</th>
+                      <th>Ruangan</th>
+                      <th>Kondisi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-rekap-pending"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: IMPOR DATA EXCEL LAMA ==================== -->
+        <section id="view-import" class="app-view admin-only" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📥 Impor Data Kerusakan dari File Excel Lama</span>
+              <button class="btn btn-secondary" onclick="downloadTemplateExcel()" style="font-size:12px;">
+                Download Contoh Format Excel
+              </button>
+            </div>
+            <div class="card-body">
+              <p style="color:var(--neutral-600); margin-bottom:16px;">
+                Fitur ini membaca file Excel lama (misalnya <i>Data Kerusakan Inventaris 2026.xlsx</i>) yang memiliki sheet bulanan <b>Januari sampai Desember</b>. Sistem otomatis mengabaikan kop judul dan baris tanda tangan, menormalkan tanggal, serta mendeteksi data yang sudah pernah diimpor.
+              </p>
+
+              <div class="dropzone" id="excel-dropzone" onclick="triggerFileInput('input-file-excel')">
+                <svg class="dropzone-icon" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                <div class="dropzone-text" style="font-weight:600; font-size:14px;">Pilih atau seret file Excel (.xlsx / .xls) ke sini</div>
+                <div class="dropzone-hint">Mendukung multi-sheet Januari s/d Desember</div>
+              </div>
+              <input type="file" id="input-file-excel" accept=".xlsx,.xls" style="display:none;" onchange="handleExcelFileSelect(event)">
+
+              <div id="import-preview-box" style="display:none; margin-top:24px;">
+                <h4 style="font-size:14px; font-weight:700; margin-bottom:12px;">Pratinjau Hasil Pembacaan Excel:</h4>
+                <div class="stats-grid" style="margin-bottom:16px;">
+                  <div class="stat-card c-blue">
+                    <div class="stat-content">
+                      <div class="stat-label">Total Baris Terbaca</div>
+                      <div class="stat-value" id="imp-total-baca">0</div>
+                    </div>
+                  </div>
+                  <div class="stat-card c-green">
+                    <div class="stat-content">
+                      <div class="stat-label">Siap Diimpor (Valid)</div>
+                      <div class="stat-value" id="imp-siap-impor">0</div>
+                    </div>
+                  </div>
+                  <div class="stat-card c-amber">
+                    <div class="stat-content">
+                      <div class="stat-label">Duplikat (Dilewati)</div>
+                      <div class="stat-value" id="imp-duplikat">0</div>
+                    </div>
+                  </div>
+                  <div class="stat-card c-red">
+                    <div class="stat-content">
+                      <div class="stat-label">Baris Gagal / Rusak</div>
+                      <div class="stat-value" id="imp-gagal">0</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="table-responsive" style="max-height:280px; margin-bottom:20px;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Sheet</th>
+                        <th>Barang</th>
+                        <th>Ruangan</th>
+                        <th>Jumlah</th>
+                        <th>Tgl Rusak</th>
+                        <th>Tgl Perbaikan</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbody-import-sample"></tbody>
+                  </table>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                  <button class="btn btn-secondary" onclick="cancelImport()">Batalkan</button>
+                  <button class="btn btn-success" id="btn-eksekusi-impor" onclick="executeExcelImport()">
+                    Eksekusi Simpan ke Google Sheets
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: PENGATURAN ==================== -->
+        <section id="view-pengaturan" class="app-view" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">⚙️ Pengaturan Identitas Sekolah & Format Laporan</span>
+            </div>
+            <div class="card-body">
+              <form id="form-pengaturan" onsubmit="handleSettingsSubmit(event)">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:24px;">
+                  <div>
+                    <h4 style="font-size:13px; font-weight:700; color:var(--primary-800); margin-bottom:14px;">Identitas Lembaga</h4>
+                    <div class="form-group">
+                      <label class="form-label" for="set-nama-sekolah">Nama Sekolah</label>
+                      <input type="text" id="set-nama-sekolah" class="form-input" required style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="set-nama-aplikasi">Nama Aplikasi</label>
+                      <input type="text" id="set-nama-aplikasi" class="form-input" required style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="set-alamat">Alamat Singkat Sekolah</label>
+                      <input type="text" id="set-alamat" class="form-input" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="set-kota">Kota Penandatangan Laporan</label>
+                      <input type="text" id="set-kota" class="form-input" style="width:100%;">
+                    </div>
+
+                    <!-- Area Logo Sekolah -->
+                    <div class="form-group" style="margin-top:20px;">
+                      <label class="form-label">Logo Sekolah</label>
+                      <div style="display:flex; align-items:center; gap:16px;">
+                        <div id="set-logo-preview" style="width:64px; height:64px; border-radius:var(--radius-md); border:1px solid var(--neutral-300); display:flex; align-items:center; justify-content:center; overflow:hidden; background:var(--neutral-50);">
+                          <span>Logo</span>
+                        </div>
+                        <div>
+                          <button type="button" class="btn btn-secondary" onclick="triggerFileInput('input-logo-file')" style="font-size:12px; padding:6px 12px;">
+                            Ganti Logo
+                          </button>
+                          <button type="button" class="btn btn-secondary" onclick="removeLogoSekolah()" style="font-size:12px; padding:6px 12px; color:var(--danger-600); margin-left:6px;">
+                            Hapus
+                          </button>
+                          <input type="file" id="input-logo-file" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="handleLogoUpload(event)">
+                          <div style="font-size:11px; color:var(--neutral-400); margin-top:4px;">Disimpan ke folder Google Drive Sistem</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 style="font-size:13px; font-weight:700; color:var(--primary-800); margin-bottom:14px;">Penandatangan Dokumen Resmi</h4>
+                    <div class="form-group">
+                      <label class="form-label" for="set-kepala-jabatan">Jabatan Penandatangan Kiri</label>
+                      <input type="text" id="set-kepala-jabatan" class="form-input" value="Kepala SMK Dwijendra" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="set-kepala-nama">Nama Kepala Sekolah</label>
+                      <input type="text" id="set-kepala-nama" class="form-input" style="width:100%;">
+                    </div>
+                    <div class="form-group" style="display:grid; grid-template-columns:100px 1fr; gap:8px;">
+                      <div>
+                        <label class="form-label">Label ID</label>
+                        <input type="text" id="set-kepala-id-label" class="form-input" value="NIK" style="width:100%;">
+                      </div>
+                      <div>
+                        <label class="form-label">Nomor Identitas</label>
+                        <input type="text" id="set-kepala-id" class="form-input" style="width:100%;">
+                      </div>
+                    </div>
+
+                    <hr style="border:none; border-top:1px solid var(--neutral-200); margin:16px 0;">
+
+                    <div class="form-group">
+                      <label class="form-label" for="set-wakasek-jabatan">Jabatan Penandatangan Kanan</label>
+                      <input type="text" id="set-wakasek-jabatan" class="form-input" value="Wakasek Sarana Prasarana" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" for="set-wakasek-nama">Nama Wakasek Sarpras</label>
+                      <input type="text" id="set-wakasek-nama" class="form-input" style="width:100%;">
+                    </div>
+                    <div class="form-group" style="display:grid; grid-template-columns:100px 1fr; gap:8px;">
+                      <div>
+                        <label class="form-label">Label ID</label>
+                        <input type="text" id="set-wakasek-id-label" class="form-input" value="NIK" style="width:100%;">
+                      </div>
+                      <div>
+                        <label class="form-label">Nomor Identitas (Opsional)</label>
+                        <input type="text" id="set-wakasek-id" class="form-input" style="width:100%;">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 style="font-size:13px; font-weight:700; color:var(--primary-800); margin-bottom:14px;">Tahun Pelajaran & Format Cetak</h4>
+                    <div class="form-group">
+                      <label class="form-label">Mode Tahun Pelajaran</label>
+                      <select id="set-tp-mode" class="form-select" style="width:100%;" onchange="toggleTpMode(this)">
+                        <option value="otomatis">Otomatis (Berdasarkan periode Juli - Juni)</option>
+                        <option value="manual">Manual (Tentukan sendiri di bawah)</option>
+                      </select>
+                    </div>
+                    <div class="form-group" id="grp-tp-manual">
+                      <label class="form-label" for="set-tp-manual">Tahun Pelajaran Manual</label>
+                      <input type="text" id="set-tp-manual" class="form-input" placeholder="2026/2027" style="width:100%;">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Ukuran Kertas Laporan</label>
+                      <select id="set-kertas" class="form-select" style="width:100%;">
+                        <option value="A4">A4</option>
+                        <option value="F4">F4 / Folio</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Orientasi Cetak Laporan</label>
+                      <select id="set-orientasi" class="form-select" style="width:100%;">
+                        <option value="landscape" selected>Landscape (Direkomendasikan untuk 11 kolom)</option>
+                        <option value="portrait">Portrait</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Tampilkan Thumbnail Foto di Laporan</label>
+                      <select id="set-thumb" class="form-select" style="width:100%;">
+                        <option value="ya">Ya (Thumbnail foto)</option>
+                        <option value="tidak">Tidak (Tautan referensi)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-footer-actions admin-only">
+                  <button type="submit" class="btn btn-primary">
+                    Simpan Perubahan Pengaturan
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: KELOLA PENGGUNA ==================== -->
+        <section id="view-users" class="app-view admin-only" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">👥 Manajemen Pengguna Sistem</span>
+              <button class="btn btn-primary" onclick="openAddUserModal()">
+                + Tambah Pengguna Baru
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Nama Lengkap</th>
+                    <th>Email Google</th>
+                    <th>Peran</th>
+                    <th>Status</th>
+                    <th>Login Terakhir</th>
+                    <th style="text-align:center;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-users">
+                  <tr><td colspan="7" style="text-align:center; padding:30px;">Memuat data pengguna...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: LOG AKTIVITAS ==================== -->
+        <section id="view-log" class="app-view admin-only" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📜 Log Aktivitas & Jejak Audit</span>
+            </div>
+            <div class="card-body">
+              <div class="filter-bar" style="margin-bottom:16px;">
+                <div class="search-input-wrap">
+                  <input type="text" id="log-filter-search" class="form-input" placeholder="Cari di log..." oninput="debounceSearchLog()">
+                </div>
+                <div class="filter-group">
+                  <span class="filter-label">Filter Aksi:</span>
+                  <select id="log-filter-aksi" class="form-select" onchange="loadLogData(1)">
+                    <option value="">Semua Aksi</option>
+                  </select>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Waktu</th>
+                      <th>Pengguna</th>
+                      <th>Peran</th>
+                      <th>Aksi</th>
+                      <th>Entitas</th>
+                      <th>ID</th>
+                      <th>Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-logs">
+                    <tr><td colspan="7" style="text-align:center; padding:30px;">Memuat riwayat log...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="pagination-wrap">
+                <div class="pagination-info" id="log-pagination-info">0 aktivitas</div>
+                <div class="pagination-controls" id="log-pagination-controls"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW: CADANGAN DATA ==================== -->
+        <section id="view-backup" class="app-view admin-only" style="display:none;">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">💾 Cadangan Database & Pemulihan</span>
+              <button class="btn btn-primary" onclick="triggerCreateBackup()">
+                Buat Snapshot Cadangan Sekarang
+              </button>
+            </div>
+            <div class="card-body">
+              <p style="color:var(--neutral-600); margin-bottom:16px;">
+                Snapshot cadangan menyimpan salinan lengkap Google Spreadsheet ke folder Google Drive <code>Cadangan Data</code>. Anda juga dapat mengunduh database format JSON untuk arsip offline mandiri.
+              </p>
+              <button class="btn btn-secondary" onclick="exportJsonBackup()" style="margin-bottom:20px;">
+                📥 Unduh Database format JSON
+              </button>
+
+              <h4 style="font-size:13px; font-weight:700; margin-bottom:10px;">Daftar File Cadangan di Google Drive:</h4>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Nama File Cadangan</th>
+                      <th>Waktu Pembuatan</th>
+                      <th>Ukuran</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-backups">
+                    <tr><td colspan="4" style="text-align:center; padding:20px;">Memuat data cadangan...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- =========================================================================
+       3. MODAL-MODAL DIALOG
+       ========================================================================= -->
+
+  <!-- MODAL: DETAIL LAPORAN LENGKAP -->
+  <div class="modal-backdrop" id="modal-detail">
+    <div class="modal-container large">
+      <div class="modal-header">
+        <h3 class="modal-title" id="mdl-detail-title">Detail Laporan Kerusakan</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-detail')">×</button>
+      </div>
+      <div class="modal-body" id="mdl-detail-body">
+        <!-- Konten detail dimuat dinamis via JS -->
+      </div>
+      <div class="modal-footer" id="mdl-detail-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-detail')">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TANDAI SUDAH DIPERBAIKI -->
+  <div class="modal-backdrop" id="modal-perbaiki">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Tandai Sudah Diperbaiki</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-perbaiki')">×</button>
+      </div>
+      <form onsubmit="handleTandaiDiperbaikiSubmit(event)">
+        <div class="modal-body">
+          <input type="hidden" id="perbaiki-laporan-id">
+          <input type="hidden" id="perbaiki-laporan-versi">
+
+          <div style="background:#ecfdf5; border:1px solid #a7f3d0; padding:12px; border-radius:var(--radius-md); font-size:12px; color:#065f46; margin-bottom:16px;">
+            Penetapan tanggal perbaikan akan mengubah status menjadi <b>"Sudah Diperbaiki"</b> secara otomatis tanpa menghapus foto atau informasi kerusakan awal.
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="perbaiki-tgl">Tanggal Perbaikan <span class="req">*</span></label>
+            <input type="date" id="perbaiki-tgl" class="form-input" required style="width:100%;">
+            <div class="field-error" id="err-perbaiki-tgl"></div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="perbaiki-catatan">Keterangan Hasil Perbaikan</label>
+            <textarea id="perbaiki-catatan" class="form-textarea" placeholder="Contoh: AC telah dibersihkan dan diisi freon baru oleh teknisi"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Unggah Foto Dokumentasi Setelah Perbaikan</label>
+            <div class="dropzone" onclick="triggerFileInput('perbaiki-file-input')">
+              <div class="dropzone-text">+ Pilih Foto Hasil Perbaikan</div>
+            </div>
+            <input type="file" id="perbaiki-file-input" accept="image/jpeg,image/png,image/webp" multiple style="display:none;" onchange="handlePerbaikanModalPhotoSelect(event)">
+            <div class="photo-preview-grid" id="preview-grid-modal-perbaikan"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-perbaiki')">Batal</button>
+          <button type="submit" class="btn btn-success" id="btn-submit-perbaikan">Simpan Hasil Perbaikan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CATAT TINDAK LANJUT -->
+  <div class="modal-backdrop" id="modal-tindak-lanjut">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Catat Tindak Lanjut Kerusakan</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-tindak-lanjut')">×</button>
+      </div>
+      <form onsubmit="handleTindakLanjutSubmit(event)">
+        <div class="modal-body">
+          <input type="hidden" id="tl-laporan-id">
+          <div class="form-group">
+            <label class="form-label" for="tl-catatan">Catatan Tindak Lanjut <span class="req">*</span></label>
+            <textarea id="tl-catatan" class="form-textarea" placeholder="Contoh: Sudah diajukan pengadaan sparepart ke bendahara sekolah" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-tindak-lanjut')">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Catatan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: TAMBAH / EDIT PENGGUNA -->
+  <div class="modal-backdrop" id="modal-user">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title" id="mdl-user-title">Tambah Pengguna Baru</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-user')">×</button>
+      </div>
+      <form onsubmit="handleUserSubmit(event)">
+        <div class="modal-body">
+          <input type="hidden" id="usr-id">
+          <div class="form-group" id="grp-usr-username">
+            <label class="form-label" for="usr-username">Username <span class="req">*</span></label>
+            <input type="text" id="usr-username" class="form-input" placeholder="huruf kecil, angka (mis: petugas2)" required style="width:100%;">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="usr-nama">Nama Lengkap <span class="req">*</span></label>
+            <input type="text" id="usr-nama" class="form-input" placeholder="Nama lengkap petugas..." required style="width:100%;">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="usr-email">Email Akun Google (Opsional)</label>
+            <input type="email" id="usr-email" class="form-input" placeholder="email@dwijendra.sch.id" style="width:100%;">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="usr-peran">Peran Akses <span class="req">*</span></label>
+            <select id="usr-peran" class="form-select" required style="width:100%;">
+              <option value="PETUGAS">Petugas Sarpras (Input, update status, upload foto, buat laporan)</option>
+              <option value="KEPSEK">Kepala Sekolah (Melihat dashboard, laporan, foto, dan unduh dokumen)</option>
+              <option value="ADMIN">Administrator (Semua hak akses penuh, kelola user & pengaturan)</option>
+            </select>
+          </div>
+          <div class="form-group" id="grp-usr-status" style="display:none;">
+            <label class="form-label" for="usr-status">Status Akun</label>
+            <select id="usr-status" class="form-select" style="width:100%;">
+              <option value="AKTIF">Aktif</option>
+              <option value="NONAKTIF">Nonaktif (Tidak dapat login)</option>
+            </select>
+          </div>
+          <div class="form-group" id="grp-usr-pw">
+            <label class="form-label" for="usr-password">Kata Sandi Awal (Kosongkan untuk otomatis acak)</label>
+            <input type="text" id="usr-password" class="form-input" placeholder="Minimal 8 karakter kombinasi huruf & angka" style="width:100%;">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-user')">Batal</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-user">Simpan Pengguna</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: GANTI KATA SANDI SENDIRI -->
+  <div class="modal-backdrop" id="modal-ganti-pw">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h3 class="modal-title">Ganti Kata Sandi Akun</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-ganti-pw')">×</button>
+      </div>
+      <form onsubmit="handleChangePasswordSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="pw-lama">Kata Sandi Lama <span class="req">*</span></label>
+            <input type="password" id="pw-lama" class="form-input" required style="width:100%;">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pw-baru">Kata Sandi Baru <span class="req">*</span></label>
+            <input type="password" id="pw-baru" class="form-input" required style="width:100%;">
+            <div class="dropzone-hint">Minimal 8 karakter, harus mengandung huruf dan angka.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="pw-konfirmasi">Konfirmasi Kata Sandi Baru <span class="req">*</span></label>
+            <input type="password" id="pw-konfirmasi" class="form-input" required style="width:100%;">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-ganti-pw')">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan Kata Sandi Baru</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- LIGHTBOX FOTO ZOOM -->
+  <div class="lightbox-modal" id="lightbox-modal" onclick="closeLightbox()">
+    <img class="lightbox-img" id="lightbox-img" src="" alt="Foto" onclick="event.stopPropagation()">
+    <div class="lightbox-caption" id="lightbox-caption"></div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container"></div>
+
+  <!-- JAVASCRIPT FRONTEND CONTROLLER -->
+  <?!= include('Script'); ?>
+</body>
+</html>

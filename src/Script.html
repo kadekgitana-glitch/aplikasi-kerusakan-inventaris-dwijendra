@@ -1,0 +1,2140 @@
+<script>
+/**
+ * =============================================================================
+ *  SISTEM INFORMASI KERUSAKAN INVENTARIS — SMK DWIJENDRA DENPASAR
+ *  Frontend JavaScript Engine & Client Controller
+ * =============================================================================
+ */
+
+// STATE APLIKASI
+const AppState = {
+  token: localStorage.getItem('sid_sarpras_token') || '',
+  user: null,
+  config: null,
+  master: { barang: [], lokasi: [] },
+  activeView: 'dashboard',
+  charts: {},
+  photosPending: { kerusakan: [], perbaikan: [] },
+  modalPerbaikanPhotos: [],
+  excelImportBatch: null,
+  currentTableQuery: {
+    page: 1,
+    pageSize: 25,
+    search: '',
+    year: '',
+    month: '',
+    lokasi: '',
+    status: '',
+    arsip: false,
+    sort: 'rusak_desc'
+  }
+};
+
+const BULAN_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+// =============================================================================
+// 1. KOMUNIKASI API (RPC) DENGAN GOOGLE APPS SCRIPT
+// =============================================================================
+
+function callApi(action, payload = {}) {
+  return new Promise((resolve, reject) => {
+    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+      console.warn('[Mock Mode] google.script.run tidak terdeteksi (lingkungan lokal).');
+      return resolve({ ok: true, data: {} });
+    }
+
+    google.script.run
+      .withSuccessHandler((res) => {
+        if (!res || !res.ok) {
+          const err = new Error((res && res.error) || 'Terjadi kesalahan pada server.');
+          err.code = (res && res.code) || 'SERVER_ERROR';
+          err.fields = (res && res.fields) || null;
+          if (err.code === 'AUTH') {
+            handleSessionExpired();
+          }
+          reject(err);
+        } else {
+          resolve(res.data);
+        }
+      })
+      .withFailureHandler((err) => {
+        const error = new Error(err.message || 'Koneksi ke server Google terputus.');
+        error.code = 'NETWORK_ERROR';
+        reject(error);
+      })
+      .api(action, payload, AppState.token);
+  });
+}
+
+function showToast(message, type = 'info', duration = 3500) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  let icon = 'ℹ️';
+  if (type === 'success') icon = '✅';
+  if (type === 'error') icon = '❌';
+  if (type === 'warning') icon = '⚠️';
+
+  toast.innerHTML = `
+    <span style="font-size:16px;">${icon}</span>
+    <span class="toast-msg">${escapeHtml(message)}</span>
+  `;
+
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    setTimeout(() => toast.remove(), 250);
+  }, duration);
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, (m) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+  })[m]);
+}
+
+// =============================================================================
+// 2. INISIALISASI APLIKASI SAAT PERTAMA KALI DIBUKA
+// =============================================================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    // 1. Muat Konfigurasi Publik
+    const cfg = await callApi('public.config');
+    AppState.config = cfg;
+    applyPublicConfig(cfg);
+
+    // 2. Cek apakah ada sesi login aktif
+    if (AppState.token) {
+      try {
+        const authRes = await callApi('auth.me');
+        if (authRes && authRes.user) {
+          onLoginSuccess(AppState.token, authRes.user);
+          return;
+        }
+      } catch (e) {
+        // Token kadaluarsa atau tidak valid
+        localStorage.removeItem('sid_sarpras_token');
+        AppState.token = '';
+      }
+    }
+
+    // Belum login -> Tampilkan layar login
+    showLoginScreen();
+  } catch (err) {
+    console.error('Inisialisasi aplikasi gagal:', err);
+    showLoginScreen();
+  }
+  initBarangAutoFill();
+});
+
+function initBarangAutoFill() {
+  const inputNama = document.getElementById('input-nama-barang');
+  if (!inputNama) return;
+  inputNama.addEventListener('input', () => {
+    const val = inputNama.value.trim().toLowerCase();
+    if (!val || !AppState.master || !AppState.master.barang) return;
+    const match = AppState.master.barang.find(b => b.nama.toLowerCase() === val);
+    const inputKode = document.getElementById('input-kode-inventaris');
+    if (match && match.kode && inputKode && !inputKode.value) {
+      inputKode.value = match.kode;
+    }
+  });
+}
+
+function applyPublicConfig(cfg) {
+  if (!cfg) return;
+  if (cfg.namaAplikasi) {
+    document.getElementById('login-app-title').textContent = cfg.namaAplikasi.toUpperCase();
+    document.getElementById('sidebar-app-name').textContent = cfg.namaAplikasi;
+  }
+  if (cfg.namaSekolah) {
+    document.getElementById('login-school-subtitle').textContent = cfg.namaSekolah.toUpperCase();
+    document.getElementById('sidebar-school-name').textContent = cfg.namaSekolah;
+  }
+  if (cfg.logo) {
+    const lImg = document.getElementById('login-logo-img');
+    const lFb = document.getElementById('login-logo-fallback');
+    lImg.src = cfg.logo;
+    lImg.style.display = 'block';
+    lFb.style.display = 'none';
+
+    const sImg = document.getElementById('sidebar-logo-img');
+    const sIcon = document.getElementById('sidebar-logo-icon');
+    sImg.src = cfg.logo;
+    sImg.style.display = 'block';
+    sIcon.style.display = 'none';
+  }
+}
+
+function showLoginScreen() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-layout').style.display = 'none';
+}
+
+function onLoginSuccess(token, user) {
+  AppState.token = token;
+  AppState.user = user;
+  localStorage.setItem('sid_sarpras_token', token);
+
+  // Perbarui UI User di Sidebar
+  document.getElementById('user-display-name').textContent = user.nama || user.username;
+  document.getElementById('user-display-role').textContent = user.peranLabel || user.peran;
+  document.getElementById('user-avatar-text').textContent = (user.nama || user.username).charAt(0).toUpperCase();
+
+  // Atur Visibilitas Menu Sesuai Peran (Admin-only)
+  const adminElements = document.querySelectorAll('.admin-only');
+  adminElements.forEach((el) => {
+    el.style.display = (user.peran === 'ADMIN') ? '' : 'none';
+  });
+
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-layout').style.display = 'flex';
+
+  // Muat Master Data & Masuk ke Dashboard
+  loadMasterData();
+  navigateTo('dashboard');
+  showToast(`Selamat datang, ${user.nama || user.username}!`, 'success');
+}
+
+function handleSessionExpired() {
+  localStorage.removeItem('sid_sarpras_token');
+  AppState.token = '';
+  AppState.user = null;
+  showToast('Sesi Anda telah berakhir. Silakan login kembali.', 'warning');
+  showLoginScreen();
+}
+
+// =============================================================================
+// 3. AUTENTIKASI: LOGIN & LOGOUT
+// =============================================================================
+
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+  const uInput = document.getElementById('login-username');
+  const pInput = document.getElementById('login-password');
+  const submitBtn = document.getElementById('btn-login-submit');
+
+  const username = uInput.value.trim();
+  const password = pInput.value;
+
+  clearFieldError('login-username');
+  clearFieldError('login-password');
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span>Memverifikasi...</span>';
+
+  try {
+    const res = await callApi('auth.login', { username, password });
+    onLoginSuccess(res.token, res.user);
+  } catch (err) {
+    if (err.fields) {
+      if (err.fields.username) setFieldError('login-username', err.fields.username);
+      if (err.fields.password) setFieldError('login-password', err.fields.password);
+    } else {
+      showToast(err.message, 'error');
+    }
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<span>Masuk ke Sistem</span>';
+  }
+}
+
+async function handleGoogleLogin() {
+  try {
+    showToast('Memeriksa akun Google Anda di server...', 'info');
+    const res = await callApi('auth.loginGoogle');
+    onLoginSuccess(res.token, res.user);
+  } catch (err) {
+    showToast(err.message, 'error', 4500);
+  }
+}
+
+async function quickLogin(role) {
+  const accounts = {
+    'admin': { u: 'admin', p: 'Admin1234!' },
+    'petugas': { u: 'petugas', p: 'Petugas1234!' },
+    'kepsek': { u: 'kepsek', p: 'Kepsek1234!' }
+  };
+  const acc = accounts[role] || accounts['admin'];
+  const uInput = document.getElementById('login-username');
+  const pInput = document.getElementById('login-password');
+  if (uInput) uInput.value = acc.u;
+  if (pInput) pInput.value = acc.p;
+
+  clearFieldError('login-username');
+  clearFieldError('login-password');
+
+  const submitBtn = document.getElementById('btn-login-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Memverifikasi...</span>';
+  }
+
+  try {
+    const res = await callApi('auth.login', { username: acc.u, password: acc.p });
+    onLoginSuccess(res.token, res.user);
+  } catch (err) {
+    showToast(err.message || 'Gagal login.', 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>Masuk ke Sistem</span>';
+    }
+  }
+}
+
+async function handleLogout() {
+  if (!confirm('Apakah Anda yakin ingin keluar dari sistem?')) return;
+  try {
+    await callApi('auth.logout');
+  } catch (e) { /* abaikan error */ }
+  localStorage.removeItem('sid_sarpras_token');
+  AppState.token = '';
+  AppState.user = null;
+  showToast('Anda telah berhasil keluar.', 'info');
+  showLoginScreen();
+}
+
+function togglePasswordVisibility(inputId) {
+  const el = document.getElementById(inputId);
+  if (el) el.type = (el.type === 'password') ? 'text' : 'password';
+}
+
+// =============================================================================
+// 4. ROUTING TAMPILAN (SPA NAVIGATION)
+// =============================================================================
+
+function navigateTo(viewName) {
+  AppState.activeView = viewName;
+
+  // Tutup sidebar mobile bila terbuka
+  document.getElementById('sidebar').classList.remove('open');
+
+  // Sembunyikan semua section view
+  document.querySelectorAll('.app-view').forEach((sec) => sec.style.display = 'none');
+
+  // Tampilkan section yang dipilih
+  const targetSec = document.getElementById(`view-${viewName}`);
+  if (targetSec) targetSec.style.display = 'block';
+
+  // Perbarui status active di sidebar
+  document.querySelectorAll('.app-sidebar .nav-item').forEach((item) => {
+    item.classList.remove('active');
+    const onclickAttr = item.getAttribute('onclick') || '';
+    if (onclickAttr.includes(`'${viewName}'`)) {
+      item.classList.add('active');
+    }
+  });
+
+  // Perbarui Judul Header
+  const titleMap = {
+    'dashboard': ['Dashboard', 'Ringkasan kondisi inventaris dan pemantauan kerusakan'],
+    'input': ['Input Data Kerusakan', 'Pencatatan kejadian kerusakan inventaris baru'],
+    'data': ['Data Kerusakan Inventaris', 'Daftar seluruh kerusakan inventaris sekolah'],
+    'belum': ['Data Belum Diperbaiki', 'Daftar kerusakan yang belum ditangani (prioritas)'],
+    'sudah': ['Data Sudah Diperbaiki', 'Daftar kerusakan yang telah selesai diperbaiki'],
+    'laporan-bulanan': ['Laporan Bulanan', 'Format dokumen resmi bulanan SMK Dwijendra Denpasar'],
+    'laporan-tahunan': ['Laporan Tahunan', 'Rekapitulasi dan evaluasi kerusakan inventaris tahunan'],
+    'import': ['Impor Data Excel Lama', 'Migrasi data dari workbook bulanan Januari s/d Desember'],
+    'pengaturan': ['Pengaturan Sistem', 'Identitas sekolah, tanda tangan, dan format laporan'],
+    'users': ['Kelola Pengguna', 'Manajemen akun pengguna dan hak akses'],
+    'log': ['Log Aktivitas', 'Jejak audit seluruh perubahan pada sistem'],
+    'backup': ['Cadangan Data', 'Manajemen cadangan database di Google Drive']
+  };
+
+  const info = titleMap[viewName] || ['Inventaris', ''];
+  document.getElementById('page-title').textContent = info[0];
+  document.getElementById('page-subtitle').textContent = info[1];
+
+  // Muat data untuk view bersangkutan
+  if (viewName === 'dashboard') loadDashboard();
+  else if (viewName === 'input') resetFormKerusakan();
+  else if (viewName === 'data') loadTableData(1);
+  else if (viewName === 'belum') loadDataBelum();
+  else if (viewName === 'sudah') loadDataSudah();
+  else if (viewName === 'laporan-bulanan') initLaporanBulananView();
+  else if (viewName === 'laporan-tahunan') initLaporanTahunanView();
+  else if (viewName === 'pengaturan') loadSettingsData();
+  else if (viewName === 'users') loadUsersData();
+  else if (viewName === 'log') loadLogData(1);
+  else if (viewName === 'backup') loadBackupList();
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+// Sinkronisasi Terpadu: Menyegarkan Data Tampilan Aktif & Angka Badge Sidebar
+async function refreshCurrentViewAndBadges() {
+  try {
+    const belumRes = await callApi('laporan.list', { status: 'BELUM', pageSize: 1 });
+    const count = belumRes ? (belumRes.total || 0) : 0;
+    const badgeSidebar = document.getElementById('nav-badge-belum');
+    if (badgeSidebar) badgeSidebar.textContent = count;
+    const badgeBelumView = document.getElementById('count-belum-badge');
+    if (badgeBelumView) badgeBelumView.textContent = `${count} Item`;
+  } catch (e) {}
+
+  if (AppState.activeView === 'dashboard') loadDashboard();
+  else if (AppState.activeView === 'data') loadTableData(AppState.currentTableQuery.page || 1);
+  else if (AppState.activeView === 'belum') loadDataBelum();
+  else if (AppState.activeView === 'sudah') loadDataSudah();
+  else if (AppState.activeView === 'laporan-bulanan') generateLaporanBulanan();
+  else if (AppState.activeView === 'laporan-tahunan') generateLaporanTahunan();
+  else if (AppState.activeView === 'log') loadLogData(1);
+}
+
+// =============================================================================
+// 5. MASTER DATA (BARANG & LOKASI)
+// =============================================================================
+
+async function loadMasterData() {
+  try {
+    const res = await callApi('master.get');
+    AppState.master = res;
+
+    // Isi Datalist Barang
+    const bList = document.getElementById('list-master-barang');
+    if (bList) {
+      bList.innerHTML = '';
+      res.barang.forEach((b) => {
+        const opt = document.createElement('option');
+        opt.value = b.nama;
+        bList.appendChild(opt);
+      });
+    }
+
+    // Isi Dropdown Lokasi Form & Filter
+    populateLokasiDropdowns(res.lokasi);
+  } catch (err) {
+    console.error('Gagal memuat master data:', err);
+  }
+}
+
+function populateLokasiDropdowns(lokasiList) {
+  const selects = [
+    document.getElementById('input-lokasi-barang'),
+    document.getElementById('dash-filter-lokasi'),
+    document.getElementById('tbl-filter-lokasi'),
+    document.getElementById('lap-bul-lokasi')
+  ];
+
+  selects.forEach((sel) => {
+    if (!sel) return;
+    const isForm = (sel.id === 'input-lokasi-barang');
+    const currentVal = sel.value;
+
+    sel.innerHTML = isForm
+      ? '<option value="">-- Pilih Lokasi / Ruangan --</option>'
+      : '<option value="">Semua Ruangan</option>';
+
+    lokasiList.forEach((l) => {
+      const opt = document.createElement('option');
+      opt.value = l.nama;
+      opt.textContent = l.nama;
+      sel.appendChild(opt);
+    });
+
+    if (isForm) {
+      const optOther = document.createElement('option');
+      optOther.value = '__OTHER__';
+      optOther.textContent = '➕ Lokasi lainnya (Tambah baru)';
+      sel.appendChild(optOther);
+    }
+
+    if (currentVal) sel.value = currentVal;
+  });
+}
+
+function checkLokasiLainnya(selectEl) {
+  const customInput = document.getElementById('input-lokasi-lainnya');
+  if (!customInput) return;
+  if (selectEl.value === '__OTHER__') {
+    customInput.style.display = 'block';
+    customInput.required = true;
+    customInput.focus();
+  } else {
+    customInput.style.display = 'none';
+    customInput.required = false;
+    customInput.value = '';
+  }
+}
+
+// =============================================================================
+// 6. DASHBOARD CONTROLLER (6 KARTU STATISTIK & 4 GRAFIK)
+// =============================================================================
+
+async function loadDashboard() {
+  const year = document.getElementById('dash-filter-year').value;
+  const month = document.getElementById('dash-filter-month').value;
+  const lokasi = document.getElementById('dash-filter-lokasi').value;
+  const status = document.getElementById('dash-filter-status').value;
+
+  try {
+    const data = await callApi('dashboard.get', { year, month, lokasi, status });
+
+    // 1. Sinkronkan Dropdown Tahun jika belum terisi
+    populateYearSelect('dash-filter-year', data.daftarTahun, data.grafik.tahunAktif);
+
+    // 2. Isi 6 Kartu Statistik
+    const st = data.statistik;
+    document.getElementById('stat-total-kejadian').textContent = formatNumber(st.totalKejadian);
+    document.getElementById('stat-total-barang').textContent = formatNumber(st.totalBarangTerdampak);
+    document.getElementById('stat-belum').textContent = formatNumber(st.belumDiperbaiki);
+    document.getElementById('stat-sudah').textContent = formatNumber(st.sudahDiperbaiki);
+    document.getElementById('stat-bulan-berjalan').textContent = formatNumber(st.bulanBerjalanCount);
+    document.getElementById('stat-persentase').textContent = `${st.persentasePenyelesaian}%`;
+
+    // Perbarui badge sidebar
+    document.getElementById('nav-badge-belum').textContent = st.belumDiperbaiki;
+
+    // 3. Render 4 Grafik
+    renderDashboardCharts(data.grafik);
+
+    // 4. Render Perlu Tindak Lanjut
+    renderPerluTindakLanjut(data.perluTindakLanjut);
+
+    // 5. Render Aktivitas Terbaru
+    renderAktivitasTerbaru(data.aktivitasTerbaru);
+  } catch (err) {
+    showToast('Gagal memuat data dashboard: ' + err.message, 'error');
+  }
+}
+
+function populateYearSelect(selectId, yearsList, selectedYear, allowAll = false) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  if (sel.options.length > 0 && !allowAll) return;
+  const currentVal = sel.value;
+  sel.innerHTML = '';
+  if (allowAll) {
+    const optAll = document.createElement('option');
+    optAll.value = '';
+    optAll.textContent = 'Semua Tahun';
+    if (!selectedYear) optAll.selected = true;
+    sel.appendChild(optAll);
+  }
+  yearsList.forEach((y) => {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (String(y) === String(selectedYear || currentVal)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function resetDashboardFilter() {
+  document.getElementById('dash-filter-month').value = '';
+  document.getElementById('dash-filter-lokasi').value = '';
+  document.getElementById('dash-filter-status').value = '';
+  loadDashboard();
+}
+
+function renderDashboardCharts(gData) {
+  // Grafik 1: Tren Kerusakan Bulanan (Jan - Des)
+  renderChart('chart-tren-bulanan', 'bar', {
+    labels: gData.trenBulanan.map((b) => b.namaBulan.substring(0, 3)),
+    datasets: [
+      {
+        label: 'Sudah Diperbaiki',
+        data: gData.trenBulanan.map((b) => b.sudah),
+        backgroundColor: '#10b981',
+        borderRadius: 4
+      },
+      {
+        label: 'Belum Diperbaiki',
+        data: gData.trenBulanan.map((b) => b.belum),
+        backgroundColor: '#ef4444',
+        borderRadius: 4
+      }
+    ]
+  }, {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: { stacked: true },
+      y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+    }
+  });
+
+  // Grafik 2: Donut Status Perbaikan
+  renderChart('chart-status-donut', 'doughnut', {
+    labels: gData.statusChart.labels,
+    datasets: [{
+      data: gData.statusChart.counts,
+      backgroundColor: ['#10b981', '#ef4444'],
+      hoverOffset: 6
+    }]
+  }, {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom' }
+    }
+  });
+
+  // Grafik 3: Kerusakan Berdasarkan Ruangan (Horizontal Bar)
+  renderChart('chart-lokasi-bar', 'bar', {
+    labels: gData.topLokasi.map((l) => l.nama),
+    datasets: [{
+      label: 'Kejadian Kerusakan',
+      data: gData.topLokasi.map((l) => l.totalKejadian),
+      backgroundColor: '#3b82f6',
+      borderRadius: 4
+    }]
+  }, {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+  });
+
+  // Grafik 4: Kerusakan Berdasarkan Nama Barang (Horizontal Bar)
+  renderChart('chart-barang-bar', 'bar', {
+    labels: gData.topBarang.map((b) => b.nama),
+    datasets: [{
+      label: 'Kejadian Kerusakan',
+      data: gData.topBarang.map((b) => b.totalKejadian),
+      backgroundColor: '#8b5cf6',
+      borderRadius: 4
+    }]
+  }, {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+  });
+}
+
+function renderChart(canvasId, type, data, options) {
+  if (AppState.charts[canvasId]) {
+    try { AppState.charts[canvasId].destroy(); } catch (e) {}
+  }
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  if (typeof Chart === 'undefined') {
+    console.warn('Library Chart.js belum tersedia di browser untuk canvas: ' + canvasId);
+    return;
+  }
+  try {
+    AppState.charts[canvasId] = new Chart(ctx, { type, data, options });
+  } catch (err) {
+    console.warn('Gagal merender chart ' + canvasId + ':', err);
+  }
+}
+
+function renderPerluTindakLanjut(items) {
+  const tbody = document.getElementById('tbody-perlu-tindak');
+  if (!tbody) return;
+  if (!items || !items.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--success-600);">🎉 Tidak ada barang rusak yang belum ditangani!</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map((r) => `
+    <tr>
+      <td style="font-size:12px; white-space:nowrap;">${formatDateIndo(r.tglRusak)}</td>
+      <td style="font-weight:600;">${escapeHtml(r.nama)}</td>
+      <td><span class="badge" style="background:var(--neutral-100);">${escapeHtml(r.lokasi)}</span></td>
+      <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.kondisi)}</td>
+      <td style="text-align:center;">
+        <button class="btn btn-secondary" onclick="openDetailModal('${r.id}')" style="font-size:11px; padding:3px 8px;">Tindak Lanjut</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderAktivitasTerbaru(items) {
+  const tbody = document.getElementById('tbody-aktivitas-terbaru');
+  if (!tbody) return;
+  if (!items || !items.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--neutral-400);">Belum ada aktivitas.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map((r) => `
+    <tr>
+      <td style="font-family:'JetBrains Mono', monospace; font-size:11px;">${r.id}</td>
+      <td style="font-weight:600;">${escapeHtml(r.nama)}</td>
+      <td>${escapeHtml(r.lokasi)}</td>
+      <td>${renderStatusBadge(r.status)}</td>
+      <td style="text-align:center;">
+        <button class="btn btn-secondary" onclick="openDetailModal('${r.id}')" style="font-size:11px; padding:3px 8px;">Lihat</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// =============================================================================
+// 7. INPUT DATA KERUSAKAN & UPLOAD FOTO
+// =============================================================================
+
+function resetFormKerusakan() {
+  document.getElementById('form-kerusakan').reset();
+  document.getElementById('input-laporan-id').value = '';
+  document.getElementById('input-laporan-versi').value = '';
+  document.getElementById('input-no-pencatatan').value = 'Dibuat otomatis oleh sistem saat disimpan';
+  document.getElementById('input-lokasi-lainnya').style.display = 'none';
+
+  // Set default tgl rusak = hari ini
+  document.getElementById('input-tgl-rusak').value = getTodayIso();
+
+  // Bersihkan foto pending
+  AppState.photosPending = { kerusakan: [], perbaikan: [] };
+  renderPhotoPreviews('kerusakan');
+  renderPhotoPreviews('perbaikan');
+
+  // Bersihkan error
+  ['nama', 'kode', 'jumlah', 'lokasi', 'kondisi', 'tgl-rusak', 'tgl-perbaikan'].forEach((f) => clearFieldError(`input-${f}`));
+}
+
+function triggerFileInput(fileInputId) {
+  const el = document.getElementById(fileInputId);
+  if (el) el.click();
+}
+
+async function handlePhotoSelect(event, jenis) {
+  const files = Array.from(event.target.files);
+  if (!files.length) return;
+
+  for (const file of files) {
+    if (AppState.photosPending[jenis].length >= 10) {
+      showToast('Maksimal 10 foto untuk setiap jenis dokumentasi.', 'warning');
+      break;
+    }
+    try {
+      const processed = await processImageFile(file);
+      AppState.photosPending[jenis].push(processed);
+    } catch (err) {
+      showToast(`Gagal membaca ${file.name}: ${err.message}`, 'error');
+    }
+  }
+  renderPhotoPreviews(jenis);
+  event.target.value = '';
+}
+
+function renderPhotoPreviews(jenis) {
+  const grid = document.getElementById(`preview-grid-${jenis}`);
+  if (!grid) return;
+  grid.innerHTML = AppState.photosPending[jenis].map((p, idx) => `
+    <div class="photo-preview-item">
+      <img src="${p.previewUrl}" alt="${escapeHtml(p.name)}" onclick="openLightbox('${p.previewUrl}', '${escapeHtml(p.name)}')">
+      <button type="button" class="photo-remove-btn" onclick="removePendingPhoto('${jenis}', ${idx})">✕</button>
+    </div>
+  `).join('');
+}
+
+function removePendingPhoto(jenis, idx) {
+  AppState.photosPending[jenis].splice(idx, 1);
+  renderPhotoPreviews(jenis);
+}
+
+// Kompresi Canvas di Browser sebelum Upload
+function processImageFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      return reject(new Error('Format foto harus JPG, PNG, atau WEBP.'));
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          // 1. Gambar Utama: Maks 1600px
+          const maxDim = 1600;
+          let w = img.width, h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const fullDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+          // 2. Thumbnail: Maks 180px
+          const tCanvas = document.createElement('canvas');
+          const tw = 180, th = Math.round((h * tw) / w);
+          tCanvas.width = tw; tCanvas.height = th;
+          const tCtx = tCanvas.getContext('2d');
+          tCtx.drawImage(canvas, 0, 0, tw, th);
+          const thumbDataUrl = tCanvas.toDataURL('image/jpeg', 0.7);
+
+          resolve({
+            name: file.name,
+            mime: 'image/jpeg',
+            dataBase64: fullDataUrl.split(',')[1],
+            thumbBase64: thumbDataUrl.split(',')[1],
+            previewUrl: thumbDataUrl
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = () => reject(new Error('File gambar tidak valid.'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Gagal membaca file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function submitLaporanForm(isInputBaru = false) {
+  const form = document.getElementById('form-kerusakan');
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
+
+  const id = document.getElementById('input-laporan-id').value;
+  const versi = document.getElementById('input-laporan-versi').value;
+
+  let lokasiVal = document.getElementById('input-lokasi-barang').value;
+  if (lokasiVal === '__OTHER__') {
+    lokasiVal = document.getElementById('input-lokasi-lainnya').value.trim();
+    if (!lokasiVal) {
+      setFieldError('input-lokasi', 'Ketik nama lokasi baru.');
+      return;
+    }
+  }
+
+  const payload = {
+    id: id,
+    versi: versi,
+    nama: document.getElementById('input-nama-barang').value.trim(),
+    kode: document.getElementById('input-kode-inventaris').value.trim(),
+    jumlah: parseInt(document.getElementById('input-jumlah-barang').value, 10),
+    lokasi: lokasiVal,
+    kondisi: document.getElementById('input-kondisi-kerusakan').value.trim(),
+    tglRusak: document.getElementById('input-tgl-rusak').value,
+    tglPerbaikan: document.getElementById('input-tgl-perbaikan').value || '',
+    keterangan: document.getElementById('input-keterangan').value.trim(),
+    koreksiHistoris: document.getElementById('chk-koreksi-historis')?.checked || false,
+    alasanKoreksi: document.getElementById('input-alasan-koreksi')?.value.trim() || '',
+    requestId: 'REQ-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8)
+  };
+
+  const btnSimpan = document.getElementById('btn-simpan-laporan');
+  const btnInputBaru = document.getElementById('btn-simpan-input-baru');
+  btnSimpan.disabled = true;
+  btnInputBaru.disabled = true;
+  btnSimpan.textContent = 'Menyimpan...';
+
+  try {
+    const isEdit = !!id;
+    const res = await callApi(isEdit ? 'laporan.update' : 'laporan.create', payload);
+    const targetLaporanId = isEdit ? id : res.id;
+
+    // Unggah Foto Kerusakan Pending
+    if (AppState.photosPending.kerusakan.length > 0) {
+      for (const p of AppState.photosPending.kerusakan) {
+        await callApi('foto.upload', {
+          laporanId: targetLaporanId,
+          jenis: 'KERUSAKAN',
+          nama: p.name,
+          data: p.dataBase64,
+          thumb: p.thumbBase64
+        });
+      }
+    }
+
+    // Unggah Foto Perbaikan Pending
+    if (AppState.photosPending.perbaikan.length > 0) {
+      for (const p of AppState.photosPending.perbaikan) {
+        await callApi('foto.upload', {
+          laporanId: targetLaporanId,
+          jenis: 'PERBAIKAN',
+          nama: p.name,
+          data: p.dataBase64,
+          thumb: p.thumbBase64
+        });
+      }
+    }
+
+    showToast(`Laporan ${targetLaporanId} berhasil disimpan!`, 'success');
+    await loadMasterData();
+    await refreshCurrentViewAndBadges();
+
+    if (isInputBaru) {
+      resetFormKerusakan();
+    } else {
+      navigateTo('data');
+    }
+  } catch (err) {
+    if (err.fields) {
+      Object.keys(err.fields).forEach((f) => setFieldError(`input-${f}`, err.fields[f]));
+    } else {
+      showToast(err.message, 'error', 4500);
+    }
+  } finally {
+    btnSimpan.disabled = false;
+    btnInputBaru.disabled = false;
+    btnSimpan.textContent = 'Simpan Data';
+  }
+}
+
+// =============================================================================
+// 8. DATA KERUSAKAN INVENTARIS: TABEL, PENCARIAN & PAGINATION
+// =============================================================================
+
+let searchDebounceTimer = null;
+function debounceSearchData() {
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => loadTableData(1), 350);
+}
+
+async function loadTableData(page = 1) {
+  // Pastikan opsi dropdown tahun terisi lengkap terlebih dahulu
+  populateYearSelect('tbl-filter-year', [2026, 2025, 2024], AppState.currentTableQuery.year || '', true);
+
+  AppState.currentTableQuery.page = page;
+  AppState.currentTableQuery.search = document.getElementById('tbl-filter-search').value.trim();
+  AppState.currentTableQuery.year = document.getElementById('tbl-filter-year').value;
+  AppState.currentTableQuery.month = document.getElementById('tbl-filter-month').value;
+  AppState.currentTableQuery.lokasi = document.getElementById('tbl-filter-lokasi').value;
+  AppState.currentTableQuery.status = document.getElementById('tbl-filter-status').value;
+  AppState.currentTableQuery.arsip = document.getElementById('tbl-filter-arsip')?.checked || false;
+  AppState.currentTableQuery.pageSize = parseInt(document.getElementById('tbl-page-size').value, 10);
+
+  const tbody = document.getElementById('tbody-data-kerusakan');
+  tbody.innerHTML = '<tr><td colspan="13" style="text-align:center; padding:30px; color:var(--neutral-400);">Memuat data...</td></tr>';
+
+  try {
+    const res = await callApi('laporan.list', AppState.currentTableQuery);
+    renderDataTableRows(res.rows);
+    renderPaginationControls(res.page, res.pages, res.total);
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center; color:var(--danger-600); padding:20px;">Gagal: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function renderDataTableRows(rows) {
+  const tbody = document.getElementById('tbody-data-kerusakan');
+  if (!tbody) return;
+  if (!rows || !rows.length) {
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center; padding:30px; color:var(--neutral-400);">Tidak ada data kerusakan yang sesuai filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map((r, idx) => {
+    const fotoCountK = (r.fotoKerusakan && r.fotoKerusakan.length) || 0;
+    const fotoCountP = (r.fotoPerbaikan && r.fotoPerbaikan.length) || 0;
+    return `
+      <tr>
+        <td>${r.no}</td>
+        <td style="font-family:'JetBrains Mono', monospace; font-size:11px; font-weight:600;">${r.id}</td>
+        <td style="font-weight:700; color:var(--neutral-900);">${escapeHtml(r.nama)}</td>
+        <td style="font-size:12px;">${escapeHtml(r.kode || '-')}</td>
+        <td style="font-weight:700;">${r.jumlah}</td>
+        <td><span class="badge" style="background:var(--neutral-100);">${escapeHtml(r.lokasi)}</span></td>
+        <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(r.kondisi)}">${escapeHtml(r.kondisi)}</td>
+        <td style="white-space:nowrap; font-size:12px;">${formatDateIndo(r.tglRusak)}</td>
+        <td style="white-space:nowrap; font-size:12px;">${r.tglPerbaikan ? formatDateIndo(r.tglPerbaikan) : '<span style="color:var(--danger-500);">-</span>'}</td>
+        <td>${renderStatusBadge(r.status)}</td>
+        <td style="white-space:nowrap;">
+          <span style="font-size:11px; cursor:pointer;" onclick="openDetailModal('${r.id}')" title="Klik untuk melihat foto">
+            📷 ${fotoCountK + fotoCountP} Foto
+          </span>
+        </td>
+        <td style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.keterangan || '-')}</td>
+        <td>
+          <div class="table-actions" style="justify-content:center;">
+            <button class="btn-icon" onclick="openDetailModal('${r.id}')" title="Lihat Detail">
+              <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            </button>
+            <button class="btn-icon" onclick="editLaporan('${r.id}')" title="Edit Data">
+              <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderPaginationControls(page, pages, total) {
+  document.getElementById('tbl-pagination-info').textContent = `Menampilkan halaman ${page} dari ${pages} (${formatNumber(total)} total data)`;
+  const controls = document.getElementById('tbl-pagination-controls');
+  if (!controls) return;
+
+  let btns = [];
+  btns.push(`<button class="btn-page" ${page <= 1 ? 'disabled' : ''} onclick="loadTableData(${page - 1})">‹</button>`);
+  for (let i = Math.max(1, page - 2); i <= Math.min(pages, page + 2); i++) {
+    btns.push(`<button class="btn-page ${i === page ? 'active' : ''}" onclick="loadTableData(${i})">${i}</button>`);
+  }
+  btns.push(`<button class="btn-page ${page >= pages ? 'disabled' : ''} onclick="loadTableData(${page + 1})">›</button>`);
+  controls.innerHTML = btns.join('');
+}
+
+async function exportCurrentTableExcel() {
+  try {
+    showToast('Menyiapkan ekspor file Excel...', 'info');
+    const query = { ...AppState.currentTableQuery, page: 1, pageSize: 5000 };
+    const res = await callApi('laporan.list', query);
+    const rows = res.rows || [];
+
+    if (!rows.length) {
+      showToast('Tidak ada data kerusakan yang sesuai filter untuk diekspor.', 'warning');
+      return;
+    }
+
+    const wsData = [
+      ['DATA KERUSAKAN INVENTARIS SEKOLAH'],
+      ['SMK DWIJENDRA DENPASAR'],
+      [`Tanggal Ekspor: ${new Date().toLocaleDateString('id-ID')} | Total: ${rows.length} Kejadian`],
+      [],
+      ['No', 'ID Laporan', 'Nama Barang', 'Kode Inventaris', 'Jumlah', 'Lokasi/Ruangan', 'Kondisi Kerusakan', 'Tanggal Rusak', 'Tanggal Perbaikan', 'Status', 'Dokumentasi Foto', 'Keterangan']
+    ];
+
+    rows.forEach((r, idx) => {
+      const jmlFoto = ((r.fotoKerusakan && r.fotoKerusakan.length) || 0) + ((r.fotoPerbaikan && r.fotoPerbaikan.length) || 0);
+      wsData.push([
+        idx + 1,
+        r.id,
+        r.nama,
+        r.kode || '-',
+        r.jumlah,
+        r.lokasi,
+        r.kondisi,
+        formatDateIndo(r.tglRusak),
+        r.tglPerbaikan ? formatDateIndo(r.tglPerbaikan) : '-',
+        r.status,
+        jmlFoto ? `${jmlFoto} Foto` : 'Tidak Ada',
+        r.keterangan || '-'
+      ]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [
+      { wch: 6 }, { wch: 18 }, { wch: 25 }, { wch: 15 }, { wch: 8 }, { wch: 22 },
+      { wch: 35 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 35 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Data Kerusakan');
+    const stamp = new Date().toISOString().substring(0, 10);
+    XLSX.writeFile(wb, `Data_Kerusakan_Inventaris_SMK_Dwijendra_${stamp}.xlsx`);
+    showToast(`Berhasil mengekspor ${rows.length} data ke file Excel!`, 'success');
+  } catch (err) {
+    showToast('Gagal mengekspor Excel: ' + err.message, 'error');
+  }
+}
+
+// =============================================================================
+// 9. DETAIL LAPORAN & MODAL PERBAIKAN
+// =============================================================================
+
+let activeDetailData = null;
+
+async function openDetailModal(id) {
+  try {
+    const r = await callApi('laporan.detail', { id });
+    activeDetailData = r;
+
+    document.getElementById('mdl-detail-title').textContent = `Detail Laporan: ${r.id} — ${r.nama}`;
+    const body = document.getElementById('mdl-detail-body');
+
+    const canEdit = hasPermission('laporan.update');
+    const canArchive = hasPermission('laporan.archive');
+    const canDelete = hasPermission('laporan.delete');
+
+    body.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+        <div>
+          <span style="font-size:18px; font-weight:800; color:var(--neutral-900);">${escapeHtml(r.nama)}</span>
+          <span style="font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--neutral-500); margin-left:8px;">[${escapeHtml(r.kode || 'Tanpa Kode')}]</span>
+        </div>
+        <div>${renderStatusBadge(r.status)}</div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; background:var(--neutral-50); padding:16px; border-radius:var(--radius-md); border:1px solid var(--neutral-200); margin-bottom:20px;">
+        <div><span style="font-size:11px; color:var(--neutral-500);">Lokasi:</span><div style="font-weight:600;">${escapeHtml(r.lokasi)}</div></div>
+        <div><span style="font-size:11px; color:var(--neutral-500);">Jumlah Terdampak:</span><div style="font-weight:700;">${r.jumlah} Unit</div></div>
+        <div><span style="font-size:11px; color:var(--neutral-500);">Tanggal Rusak:</span><div style="font-weight:600;">${formatDateIndo(r.tglRusak)}</div></div>
+        <div><span style="font-size:11px; color:var(--neutral-500);">Tanggal Perbaikan:</span><div style="font-weight:600; color:${r.tglPerbaikan ? 'var(--success-700)' : 'var(--danger-600)'};">${r.tglPerbaikan ? formatDateIndo(r.tglPerbaikan) : 'Belum Diperbaiki'}</div></div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <h4 style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--neutral-500); margin-bottom:4px;">Kondisi Kerusakan</h4>
+        <div style="background:var(--white); border:1px solid var(--neutral-200); padding:12px; border-radius:var(--radius-md); font-size:13px;">${escapeHtml(r.kondisi)}</div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <h4 style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--neutral-500); margin-bottom:4px;">Keterangan & Riwayat Tindak Lanjut</h4>
+        <div style="background:var(--white); border:1px solid var(--neutral-200); padding:12px; border-radius:var(--radius-md); font-size:13px; white-space:pre-wrap;">${escapeHtml(r.keterangan || '-')}</div>
+      </div>
+
+      <!-- FOTO SEBELUM & SESUDAH PERBAIKAN -->
+      <div style="margin-bottom:24px;">
+        <h4 style="font-size:13px; font-weight:700; margin-bottom:10px;">📸 Dokumentasi Foto Kerusakan (${(r.foto && r.foto.kerusakan.length) || 0})</h4>
+        <div class="photo-preview-grid" id="detail-foto-kerusakan">
+          ${renderPhotoListHtml(r.foto ? r.foto.kerusakan : [])}
+        </div>
+      </div>
+
+      <div style="margin-bottom:24px;">
+        <h4 style="font-size:13px; font-weight:700; margin-bottom:10px; color:var(--success-700);">🛠️ Dokumentasi Setelah Perbaikan (${(r.foto && r.foto.perbaikan.length) || 0})</h4>
+        <div class="photo-preview-grid" id="detail-foto-perbaikan">
+          ${renderPhotoListHtml(r.foto ? r.foto.perbaikan : [])}
+        </div>
+      </div>
+
+      <!-- AUDIT TIMELINE -->
+      <div style="border-top:1px solid var(--neutral-200); padding-top:16px;">
+        <h4 style="font-size:12px; font-weight:700; text-transform:uppercase; color:var(--neutral-500); margin-bottom:8px;">Jejak Audit Laporan</h4>
+        <div style="font-size:12px; color:var(--neutral-600); line-height:1.6;">
+          Dibuat oleh <b>${escapeHtml(r.dibuatOleh)}</b> pada ${escapeHtml(r.dibuatPada)}<br>
+          Terakhir diubah oleh <b>${escapeHtml(r.diubahOleh || r.dibuatOleh)}</b> pada ${escapeHtml(r.diubahPada || r.dibuatPada)}
+        </div>
+      </div>
+    `;
+
+    // Footer Tombol Aksi
+    const footer = document.getElementById('mdl-detail-footer');
+    footer.innerHTML = `
+      <button class="btn btn-secondary" onclick="closeModal('modal-detail')">Tutup</button>
+      <button class="btn btn-secondary" onclick="openTindakLanjutModal('${r.id}')">+ Catat Tindak Lanjut</button>
+      ${r.status === 'Belum Diperbaiki' ? `<button class="btn btn-success" onclick="openTandaiDiperbaikiModal('${r.id}', '${r.versi}')">✓ Tandai Sudah Diperbaiki</button>` : ''}
+      ${canEdit ? `<button class="btn btn-secondary" onclick="editLaporan('${r.id}')">✏️ Edit</button>` : ''}
+      ${canArchive && !r.arsip ? `<button class="btn btn-secondary" onclick="archiveLaporanAction('${r.id}')">Arsipkan</button>` : ''}
+      ${canArchive && r.arsip ? `<button class="btn btn-secondary" onclick="restoreLaporanAction('${r.id}')">Pulihkan</button>` : ''}
+      ${canDelete && r.arsip ? `<button class="btn btn-danger" onclick="deleteLaporanPermanentAction('${r.id}')">Hapus Permanen</button>` : ''}
+    `;
+
+    openModal('modal-detail');
+  } catch (err) {
+    showToast('Gagal memuat detail laporan: ' + err.message, 'error');
+  }
+}
+
+function renderPhotoListHtml(photos) {
+  if (!photos || !photos.length) {
+    return '<span style="font-size:12px; color:var(--neutral-400);">Belum ada dokumentasi foto.</span>';
+  }
+  return photos.map((p) => {
+    const thumbSrc = p.thumb
+      ? (p.thumb.startsWith('data:') ? p.thumb : 'data:image/jpeg;base64,' + p.thumb)
+      : (p.dataUrl || '');
+    return `
+      <div class="photo-preview-item" title="${escapeHtml(p.nama)}" onclick="loadAndZoomPhoto('${p.fotoId}', '${escapeHtml(p.nama)}')">
+        ${thumbSrc 
+          ? `<img src="${thumbSrc}" id="img-thumb-${p.fotoId}" alt="${escapeHtml(p.nama)}">`
+          : `<div style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; background:var(--neutral-100); color:var(--primary-600); cursor:pointer;">
+               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+               <span style="font-size:9px; margin-top:2px; font-weight:600;">Lihat Foto</span>
+             </div>`
+        }
+        <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.65); color:#fff; font-size:9px; padding:2px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          📷 ${escapeHtml(p.nama)}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Lazy-load foto thumbnails saat detail terbuka
+async function loadAndZoomPhoto(fotoId, caption) {
+  try {
+    showToast('Memuat foto resolusi tinggi...', 'info', 1500);
+    const res = await callApi('foto.get', { fotoId, size: 'full' });
+    openLightbox(res.dataUrl, caption);
+  } catch (err) {
+    showToast('Gagal memuat foto: ' + err.message, 'error');
+  }
+}
+
+function openTandaiDiperbaikiModal(id, versi) {
+  closeModal('modal-detail');
+  document.getElementById('perbaiki-laporan-id').value = id;
+  document.getElementById('perbaiki-laporan-versi').value = versi;
+  document.getElementById('perbaiki-tgl').value = getTodayIso();
+  document.getElementById('perbaiki-catatan').value = '';
+  AppState.modalPerbaikanPhotos = [];
+  renderPerbaikanModalPhotos();
+  openModal('modal-perbaiki');
+}
+
+async function handlePerbaikanModalPhotoSelect(event) {
+  const files = Array.from(event.target.files);
+  for (const f of files) {
+    try {
+      const p = await processImageFile(f);
+      AppState.modalPerbaikanPhotos.push(p);
+    } catch (e) { showToast(e.message, 'error'); }
+  }
+  renderPerbaikanModalPhotos();
+  event.target.value = '';
+}
+
+function renderPerbaikanModalPhotos() {
+  const grid = document.getElementById('preview-grid-modal-perbaikan');
+  if (!grid) return;
+  grid.innerHTML = AppState.modalPerbaikanPhotos.map((p, idx) => `
+    <div class="photo-preview-item">
+      <img src="${p.previewUrl}" alt="">
+      <button type="button" class="photo-remove-btn" onclick="AppState.modalPerbaikanPhotos.splice(${idx},1); renderPerbaikanModalPhotos();">✕</button>
+    </div>
+  `).join('');
+}
+
+async function handleTandaiDiperbaikiSubmit(event) {
+  event.preventDefault();
+  const id = document.getElementById('perbaiki-laporan-id').value;
+  const versi = document.getElementById('perbaiki-laporan-versi').value;
+  const tglPerbaikan = document.getElementById('perbaiki-tgl').value;
+  const catatan = document.getElementById('perbaiki-catatan').value.trim();
+
+  const btn = document.getElementById('btn-submit-perbaikan');
+  btn.disabled = true;
+  btn.textContent = 'Menyimpan...';
+
+  try {
+    await callApi('laporan.repair', { id, versi, tglPerbaikan, catatan });
+
+    // Unggah foto jika ada
+    if (AppState.modalPerbaikanPhotos.length > 0) {
+      for (const p of AppState.modalPerbaikanPhotos) {
+        await callApi('foto.upload', {
+          laporanId: id,
+          jenis: 'PERBAIKAN',
+          nama: p.name,
+          data: p.dataBase64,
+          thumb: p.thumbBase64
+        });
+      }
+    }
+
+    showToast('Laporan berhasil ditandai Sudah Diperbaiki!', 'success');
+    closeModal('modal-perbaiki');
+    closeModal('modal-detail');
+    await refreshCurrentViewAndBadges();
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Simpan Hasil Perbaikan';
+  }
+}
+
+function openTindakLanjutModal(id) {
+  document.getElementById('tl-laporan-id').value = id;
+  document.getElementById('tl-catatan').value = '';
+  openModal('modal-tindak-lanjut');
+}
+
+async function handleTindakLanjutSubmit(event) {
+  event.preventDefault();
+  const id = document.getElementById('tl-laporan-id').value;
+  const catatan = document.getElementById('tl-catatan').value.trim();
+
+  try {
+    await callApi('laporan.followUp', { id, catatan });
+    showToast('Catatan tindak lanjut berhasil disimpan.', 'success');
+    closeModal('modal-tindak-lanjut');
+    await refreshCurrentViewAndBadges();
+    openDetailModal(id);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function editLaporan(id) {
+  closeModal('modal-detail');
+  try {
+    const r = await callApi('laporan.detail', { id });
+    navigateTo('input');
+
+    document.getElementById('input-laporan-id').value = r.id;
+    document.getElementById('input-laporan-versi').value = r.versi;
+    document.getElementById('input-no-pencatatan').value = `Nomor Tetap: ${r.id}`;
+
+    document.getElementById('input-nama-barang').value = r.nama;
+    document.getElementById('input-kode-inventaris').value = r.kode || '';
+    document.getElementById('input-jumlah-barang').value = r.jumlah;
+
+    const locSelect = document.getElementById('input-lokasi-barang');
+    locSelect.value = r.lokasi;
+    if (locSelect.value !== r.lokasi) {
+      locSelect.value = '__OTHER__';
+      checkLokasiLainnya(locSelect);
+      document.getElementById('input-lokasi-lainnya').value = r.lokasi;
+    }
+
+    document.getElementById('input-kondisi-kerusakan').value = r.kondisi;
+    document.getElementById('input-tgl-rusak').value = r.tglRusak;
+    document.getElementById('input-tgl-perbaikan').value = r.tglPerbaikan || '';
+    document.getElementById('input-keterangan').value = r.keterangan || '';
+
+    showToast(`Mengedit laporan ${r.id}`, 'info');
+  } catch (err) {
+    showToast('Gagal memuat laporan untuk diedit: ' + err.message, 'error');
+  }
+}
+
+async function archiveLaporanAction(id) {
+  if (!confirm(`Arsipkan laporan ${id}? Laporan tidak akan muncul di tabel operasional harian.`)) return;
+  try {
+    await callApi('laporan.archive', { id });
+    showToast(`Laporan ${id} berhasil diarsipkan.`, 'success');
+    closeModal('modal-detail');
+    await refreshCurrentViewAndBadges();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function restoreLaporanAction(id) {
+  try {
+    await callApi('laporan.restore', { id });
+    showToast(`Laporan ${id} berhasil dipulihkan.`, 'success');
+    closeModal('modal-detail');
+    await refreshCurrentViewAndBadges();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteLaporanPermanentAction(id) {
+  const konfirmasi = prompt(`PERINGATAN: Tindakan ini permanen!\nKetik ID laporan "${id}" untuk konfirmasi:`);
+  if (!konfirmasi || konfirmasi.trim() !== id) {
+    showToast('Penghapusan dibatalkan karena ID tidak sesuai.', 'warning');
+    return;
+  }
+  try {
+    await callApi('laporan.delete', { id, konfirmasi });
+    showToast(`Laporan ${id} dan foto telah dihapus permanen.`, 'success');
+    closeModal('modal-detail');
+    await refreshCurrentViewAndBadges();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// =============================================================================
+// 10. DATA BELUM DIPERBAIKI & DATA SUDAH DIPERBAIKI
+// =============================================================================
+
+async function loadDataBelum() {
+  const tbody = document.getElementById('tbody-data-belum');
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px;">Memuat data...</td></tr>';
+  try {
+    const res = await callApi('laporan.list', { status: 'BELUM', sort: 'rusak_asc', pageSize: 500 });
+    document.getElementById('count-belum-badge').textContent = `${res.total} Item`;
+    const navBadge = document.getElementById('nav-badge-belum');
+    if (navBadge) navBadge.textContent = res.total;
+
+    if (!res.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--success-600);">🎉 Tidak ada barang rusak yang belum diperbaiki.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = res.rows.map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td style="white-space:nowrap; font-weight:600; color:var(--danger-700);">${formatDateIndo(r.tglRusak)}</td>
+        <td style="font-weight:700;">${escapeHtml(r.nama)}</td>
+        <td>${escapeHtml(r.kode || '-')}</td>
+        <td style="font-weight:700;">${r.jumlah}</td>
+        <td><span class="badge" style="background:var(--neutral-100);">${escapeHtml(r.lokasi)}</span></td>
+        <td>${escapeHtml(r.kondisi)}</td>
+        <td style="max-width:180px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.keterangan || '-')}</td>
+        <td style="text-align:center; white-space:nowrap;">
+          <button class="btn btn-secondary" onclick="openDetailModal('${r.id}')" style="font-size:11px; padding:3px 8px;">Detail</button>
+          <button class="btn btn-success" onclick="openTandaiDiperbaikiModal('${r.id}', '${r.versi}')" style="font-size:11px; padding:3px 8px; margin-left:4px;">Perbaiki</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="9" style="color:red; text-align:center;">Gagal: ${err.message}</td></tr>`;
+  }
+}
+
+async function loadDataSudah() {
+  const tbody = document.getElementById('tbody-data-sudah');
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px;">Memuat data...</td></tr>';
+  try {
+    const res = await callApi('laporan.list', { status: 'SUDAH', sort: 'perbaikan_desc', pageSize: 500 });
+    document.getElementById('count-sudah-badge').textContent = `${res.total} Item`;
+
+    if (!res.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:30px; color:var(--neutral-400);">Belum ada data perbaikan.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = res.rows.map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td style="font-family:'JetBrains Mono', monospace; font-size:11px;">${r.id}</td>
+        <td style="font-weight:700;">${escapeHtml(r.nama)}</td>
+        <td>${escapeHtml(r.lokasi)}</td>
+        <td style="font-size:12px;">${formatDateIndo(r.tglRusak)}</td>
+        <td style="font-size:12px; font-weight:600; color:var(--success-700);">${formatDateIndo(r.tglPerbaikan)}</td>
+        <td>
+          <span style="font-size:11px; cursor:pointer;" onclick="openDetailModal('${r.id}')">
+            📷 ${((r.fotoKerusakan && r.fotoKerusakan.length) || 0) + ((r.fotoPerbaikan && r.fotoPerbaikan.length) || 0)} Foto (Bandingkan)
+          </span>
+        </td>
+        <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.keterangan || '-')}</td>
+        <td style="text-align:center;">
+          <button class="btn btn-secondary" onclick="openDetailModal('${r.id}')" style="font-size:11px; padding:3px 8px;">Lihat</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="9" style="color:red; text-align:center;">Gagal: ${err.message}</td></tr>`;
+  }
+}
+
+// =============================================================================
+// 11. LAPORAN BULANAN RESMI (FORMAT DINAS SMK DWIJENDRA DENPASAR)
+// =============================================================================
+
+let cachedLaporanBulananData = null;
+
+function initLaporanBulananView() {
+  populateYearSelect('lap-bul-year', [2026, 2025, 2024], new Date().getFullYear());
+  document.getElementById('lap-bul-month').value = new Date().getMonth() + 1;
+  generateLaporanBulanan();
+}
+
+async function generateLaporanBulanan() {
+  const year = document.getElementById('lap-bul-year').value;
+  const month = document.getElementById('lap-bul-month').value;
+  const lokasi = document.getElementById('lap-bul-lokasi').value;
+  const status = document.getElementById('lap-bul-status').value;
+
+  const tbody = document.getElementById('tbody-laporan-dinas');
+  tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:30px;">Menyusun laporan bulanan...</td></tr>';
+
+  try {
+    const res = await callApi('report.bulanan', { year, month, lokasi, status });
+    cachedLaporanBulananData = res;
+
+    // Header Laporan
+    document.getElementById('doc-th-pelajaran').textContent = `TAHUN PELAJARAN ${res.meta.tahunPelajaran}`;
+    document.getElementById('doc-school-name').textContent = res.meta.namaSekolahUpper;
+    document.getElementById('doc-bulan-periode').textContent = `BULAN: ${res.periode.namaBulan.toUpperCase()} ${res.periode.tahun}`;
+
+    // Baris Tabel
+    if (!res.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:30px; color:var(--neutral-400);">Tidak ada catatan kerusakan inventaris pada periode ini.</td></tr>';
+    } else {
+      tbody.innerHTML = res.rows.map((r) => `
+        <tr>
+          <td style="text-align:center;">${r.no}</td>
+          <td style="font-weight:600;">${escapeHtml(r.nama)}</td>
+          <td style="text-align:center;">${escapeHtml(r.kode)}</td>
+          <td style="text-align:center; font-weight:700;">${r.jumlah}</td>
+          <td>${escapeHtml(r.lokasi)}</td>
+          <td>${escapeHtml(r.kondisi)}</td>
+          <td style="text-align:center; font-size:11px;">${r.fotoKerusakan.length ? 'Ada Foto' : '-'}</td>
+          <td style="text-align:center; white-space:nowrap;">${r.tglRusakIndo}</td>
+          <td style="text-align:center; white-space:nowrap;">${r.tglPerbaikanIndo}</td>
+          <td style="text-align:center; font-size:11px;">${r.fotoPerbaikan.length ? 'Ada Foto' : '-'}</td>
+          <td>${escapeHtml(r.keterangan)}</td>
+        </tr>
+      `).join('');
+    }
+
+    // Tanda Tangan Resmi
+    const k = res.meta.kiri;
+    document.getElementById('sig-kiri-jabatan').textContent = k.jabatan;
+    document.getElementById('sig-kiri-nama').textContent = k.nama;
+    document.getElementById('sig-kiri-id').textContent = k.id ? `${k.idLabel}. ${k.id}` : '';
+
+    const kn = res.meta.kanan;
+    document.getElementById('sig-kanan-tgl').textContent = kn.pembuka;
+    document.getElementById('sig-kanan-jabatan').textContent = kn.jabatan;
+    document.getElementById('sig-kanan-nama').textContent = kn.nama;
+    document.getElementById('sig-kanan-id').textContent = kn.id ? `${kn.idLabel}. ${kn.id}` : '';
+
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="11" style="color:red; text-align:center;">Gagal: ${err.message}</td></tr>`;
+  }
+}
+
+function exportLaporanBulananExcel() {
+  if (!cachedLaporanBulananData || !cachedLaporanBulananData.rows.length) {
+    showToast('Tidak ada data laporan untuk diekspor.', 'warning');
+    return;
+  }
+  const d = cachedLaporanBulananData;
+  const wsData = [
+    ['DATA KERUSAKAN INVENTARIS'],
+    [`TAHUN PELAJARAN ${d.meta.tahunPelajaran}`],
+    [d.meta.namaSekolahUpper],
+    [`BULAN: ${d.periode.namaBulan.toUpperCase()} ${d.periode.tahun}`],
+    [],
+    ['No', 'Nama Barang', 'Kode Inventaris', 'Jumlah', 'Lokasi/Ruangan', 'Kondisi Kerusakan', 'Dokumentasi Kerusakan', 'Tanggal Rusak', 'Tanggal Perbaikan', 'Dokumentasi Setelah Perbaikan', 'Keterangan']
+  ];
+
+  d.rows.forEach((r) => {
+    wsData.push([
+      r.no, r.nama, r.kode, r.jumlah, r.lokasi, r.kondisi,
+      r.fotoKerusakan.length ? 'Ada' : '-', r.tglRusakIndo, r.tglPerbaikanIndo,
+      r.fotoPerbaikan.length ? 'Ada' : '-', r.keterangan
+    ]);
+  });
+
+  wsData.push([]);
+  wsData.push(['Mengetahui,', '', '', '', '', '', '', `${d.meta.kota}, ${d.meta.tanggalCetakLabel}`]);
+  wsData.push([d.meta.kiri.jabatan, '', '', '', '', '', '', d.meta.kanan.jabatan]);
+  wsData.push([]);
+  wsData.push([]);
+  wsData.push([d.meta.kiri.nama, '', '', '', '', '', '', d.meta.kanan.nama]);
+  wsData.push([d.meta.kiri.id ? `${d.meta.kiri.idLabel}. ${d.meta.kiri.id}` : '', '', '', '', '', '', '', d.meta.kanan.id ? `${d.meta.kanan.idLabel}. ${d.meta.kanan.id}` : '']);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  XLSX.utils.book_append_sheet(wb, ws, d.periode.namaBulan);
+  XLSX.writeFile(wb, `Laporan_Kerusakan_${d.periode.namaBulan}_${d.periode.tahun}.xlsx`);
+  showToast('File Excel laporan bulanan berhasil diunduh.', 'success');
+}
+
+async function archiveReportPdfToDrive() {
+  showToast('Fitur cetak cetak browser dapat diarahkan ke "Save as PDF" untuk hasil A4 Landscape sempurna.', 'info', 4000);
+  window.print();
+}
+
+// =============================================================================
+// 12. LAPORAN TAHUNAN
+// =============================================================================
+
+function initLaporanTahunanView() {
+  populateYearSelect('lap-tahunan-year', [2026, 2025, 2024], new Date().getFullYear());
+  generateLaporanTahunan();
+}
+
+async function generateLaporanTahunan() {
+  const year = document.getElementById('lap-tahunan-year').value;
+  try {
+    const res = await callApi('report.tahunan', { year });
+
+    // 1. Kartu Ringkasan
+    const grid = document.getElementById('stats-tahunan-grid');
+    grid.innerHTML = `
+      <div class="stat-card c-blue">
+        <div class="stat-content">
+          <div class="stat-label">Total Kejadian 1 Tahun</div>
+          <div class="stat-value">${res.ringkasan.totalKejadian}</div>
+        </div>
+      </div>
+      <div class="stat-card c-purple">
+        <div class="stat-content">
+          <div class="stat-label">Total Barang Terdampak</div>
+          <div class="stat-value">${res.ringkasan.totalBarang} Unit</div>
+        </div>
+      </div>
+      <div class="stat-card c-green">
+        <div class="stat-content">
+          <div class="stat-label">Selesai Diperbaiki</div>
+          <div class="stat-value">${res.ringkasan.sudahDiperbaiki}</div>
+        </div>
+      </div>
+      <div class="stat-card c-red">
+        <div class="stat-content">
+          <div class="stat-label">Belum Diselesaikan</div>
+          <div class="stat-value">${res.ringkasan.belumDiperbaiki}</div>
+        </div>
+      </div>
+      <div class="stat-card c-cyan">
+        <div class="stat-content">
+          <div class="stat-label">Persentase Penyelesaian</div>
+          <div class="stat-value">${res.ringkasan.persentase}%</div>
+        </div>
+      </div>
+    `;
+
+    // 2. Rekap 12 Bulan
+    document.getElementById('tbody-rekap-bulanan').innerHTML = res.rekapBulanan.map((b) => `
+      <tr>
+        <td style="font-weight:600;">${b.namaBulan}</td>
+        <td>${b.totalKejadian}</td>
+        <td>${b.totalBarang}</td>
+        <td style="color:var(--success-700); font-weight:600;">${b.sudah}</td>
+        <td style="color:var(--danger-600); font-weight:600;">${b.belum}</td>
+        <td><b>${b.persentase}%</b></td>
+      </tr>
+    `).join('');
+
+    // 3. Rekap Ruangan
+    document.getElementById('tbody-rekap-lokasi').innerHTML = res.rekapLokasi.slice(0, 10).map((l) => `
+      <tr>
+        <td style="font-weight:600;">${escapeHtml(l.lokasi)}</td>
+        <td>${l.totalKejadian}</td>
+        <td>${l.totalBarang}</td>
+        <td>${l.sudah}</td>
+        <td>${l.belum}</td>
+      </tr>
+    `).join('');
+
+    // 4. Pending List
+    const pendingTbody = document.getElementById('tbody-rekap-pending');
+    if (!res.pendingList.length) {
+      pendingTbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--success-600); padding:16px;">🎉 Tidak ada kerusakan pending di tahun ini!</td></tr>';
+    } else {
+      pendingTbody.innerHTML = res.pendingList.map((p) => `
+        <tr>
+          <td style="font-size:12px;">${formatDateIndo(p.tglRusak)}</td>
+          <td style="font-weight:600;">${escapeHtml(p.nama)}</td>
+          <td>${escapeHtml(p.lokasi)}</td>
+          <td style="font-size:12px;">${escapeHtml(p.kondisi)}</td>
+        </tr>
+      `).join('');
+    }
+
+  } catch (err) {
+    showToast('Gagal memuat laporan tahunan: ' + err.message, 'error');
+  }
+}
+
+async function exportLaporanTahunanExcel() {
+  const year = document.getElementById('lap-tahunan-year')?.value || new Date().getFullYear();
+  try {
+    showToast('Menyiapkan file Excel laporan tahunan...', 'info');
+    const res = await callApi('report.tahunan', { year });
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Ringkasan & Tren Bulanan
+    const summaryData = [
+      ['LAPORAN EVALUASI & REKAPITULASI KERUSAKAN INVENTARIS TAHUNAN'],
+      ['SMK DWIJENDRA DENPASAR'],
+      [`Tahun Evaluasi: ${year}`],
+      [],
+      ['RINGKASAN TAHUNAN', 'NILAI'],
+      ['Total Kejadian Kerusakan', res.ringkasan.totalKejadian],
+      ['Total Unit Barang Terdampak', res.ringkasan.totalBarang],
+      ['Barang Selesai Diperbaiki', res.ringkasan.sudahDiperbaiki],
+      ['Barang Belum Diselesaikan', res.ringkasan.belumDiperbaiki],
+      ['Persentase Tingkat Penyelesaian', `${res.ringkasan.persentase}%`],
+      [],
+      ['REKAPITULASI BULANAN (JANUARI - DESEMBER)'],
+      ['Bulan', 'Total Kejadian', 'Total Barang', 'Sudah Diperbaiki', 'Belum Diperbaiki', 'Persentase Selesai']
+    ];
+
+    res.rekapBulanan.forEach((b) => {
+      summaryData.push([b.namaBulan, b.totalKejadian, b.totalBarang, b.sudah, b.belum, `${b.persentase}%`]);
+    });
+
+    summaryData.push([]);
+    summaryData.push(['DISTRIBUSI KERUSAKAN PER LOKASI / RUANGAN']);
+    summaryData.push(['Nama Ruangan / Lokasi', 'Total Kejadian', 'Total Barang', 'Sudah Diperbaiki', 'Belum Diperbaiki']);
+    res.rekapLokasi.forEach((l) => {
+      summaryData.push([l.lokasi, l.totalKejadian, l.totalBarang, l.sudah, l.belum]);
+    });
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, wsSummary, `Rekap_${year}`);
+
+    // Sheet 2: Daftar Kerusakan Pending
+    if (res.pendingList && res.pendingList.length > 0) {
+      const pendingData = [
+        [`DAFTAR KERUSAKAN YANG BELUM DISELESAIKAN TAHUN ${year}`],
+        [],
+        ['No', 'ID Laporan', 'Tanggal Rusak', 'Nama Barang', 'Lokasi/Ruangan', 'Kondisi Kerusakan', 'Keterangan']
+      ];
+      res.pendingList.forEach((p, idx) => {
+        pendingData.push([
+          idx + 1,
+          p.id,
+          formatDateIndo(p.tglRusak),
+          p.nama,
+          p.lokasi,
+          p.kondisi,
+          p.keterangan || '-'
+        ]);
+      });
+      const wsPending = XLSX.utils.aoa_to_sheet(pendingData);
+      XLSX.utils.book_append_sheet(wb, wsPending, 'Belum Selesai');
+    }
+
+    XLSX.writeFile(wb, `Laporan_Tahunan_Kerusakan_SMK_Dwijendra_${year}.xlsx`);
+    showToast('File Excel laporan tahunan berhasil diunduh!', 'success');
+  } catch (err) {
+    showToast('Gagal mengekspor laporan tahunan: ' + err.message, 'error');
+  }
+}
+
+// =============================================================================
+// 13. IMPOR WORKBOOK EXCEL LAMA (JANUARI - DESEMBER)
+// =============================================================================
+
+function handleExcelFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+
+      // Kumpulkan data seluruh sheet
+      const sheetsPayload = [];
+      workbook.SheetNames.forEach((sName) => {
+        const worksheet = workbook.Sheets[sName];
+        const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        sheetsPayload.push({ name: sName, rows: rawRows });
+      });
+
+      showToast(`Membaca ${workbook.SheetNames.length} sheet bulanan...`, 'info');
+
+      // Kirim ke Backend untuk Validasi Pratinjau
+      const previewRes = await callApi('import.preview', {
+        sheets: sheetsPayload,
+        year: 2026
+      });
+
+      // Simpan seluruh data valid siap impor (bukan hanya 15 data sampel)
+      AppState.excelImportBatch = previewRes.items || previewRes.validItems || previewRes.sampleValid;
+
+      // Tampilkan Hasil Pratinjau
+      document.getElementById('import-preview-box').style.display = 'block';
+      document.getElementById('imp-total-baca').textContent = previewRes.totalDibaca;
+      document.getElementById('imp-siap-impor').textContent = previewRes.siapImpor;
+      document.getElementById('imp-duplikat').textContent = previewRes.duplikatDilewati;
+      document.getElementById('imp-gagal').textContent = previewRes.gagal;
+
+      document.getElementById('tbody-import-sample').innerHTML = (previewRes.sampleValid || []).slice(0, 10).map((r) => `
+        <tr>
+          <td><b>${escapeHtml(r.sheetName)}</b></td>
+          <td>${escapeHtml(r.nama)}</td>
+          <td>${escapeHtml(r.lokasi)}</td>
+          <td>${r.jumlah}</td>
+          <td>${formatDateIndo(r.tglRusak)}</td>
+          <td>${r.tglPerbaikan ? formatDateIndo(r.tglPerbaikan) : '-'}</td>
+          <td>${renderStatusBadge(r.status)}</td>
+        </tr>
+      `).join('');
+
+    } catch (err) {
+      showToast('Gagal memproses file Excel: ' + err.message, 'error', 5000);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function executeExcelImport() {
+  if (!AppState.excelImportBatch || !AppState.excelImportBatch.length) {
+    showToast('Tidak ada data siap impor.', 'warning');
+    return;
+  }
+  const btn = document.getElementById('btn-eksekusi-impor');
+  btn.disabled = true;
+  btn.textContent = 'Mengimpor ke Database...';
+
+  try {
+    const res = await callApi('import.execute', { items: AppState.excelImportBatch });
+    showToast(res.pesan, 'success', 5000);
+    cancelImport();
+    await loadMasterData();
+    await refreshCurrentViewAndBadges();
+    navigateTo('data');
+  } catch (err) {
+    showToast(err.message, 'error', 5000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Eksekusi Simpan Data';
+  }
+}
+
+function cancelImport() {
+  AppState.excelImportBatch = null;
+  document.getElementById('import-preview-box').style.display = 'none';
+  document.getElementById('input-file-excel').value = '';
+}
+
+function downloadTemplateExcel() {
+  const wsData = [
+    ['DATA KERUSAKAN INVENTARIS'],
+    ['TAHUN PELAJARAN 2026/2027'],
+    ['SMK DWIJENDRA DENPASAR'],
+    ['BULAN: JANUARI 2026'],
+    [],
+    ['No', 'Nama Barang', 'Kode Inventaris', 'Jumlah', 'Lokasi/Ruangan', 'Kondisi Kerusakan', 'Dokumentasi Kerusakan', 'Tanggal Rusak', 'Tanggal Perbaikan', 'Dokumentasi Setelah Perbaikan', 'Keterangan'],
+    [1, 'AC Daikin', 'C14.03', 1, 'Ruang FO', 'Tidak dingin / pipa bocor', '', '2026-01-15', '2026-01-18', '', 'Sudah diisi freon'],
+    [2, 'Keran Air', '', 2, 'Toilet Siswa', 'Patah dan bocor terus menerus', '', '2026-01-20', '', '', 'Perlu diganti keran baru']
+  ];
+  const wb = XLSX.utils.book_new();
+  BULAN_NAMES.forEach((bName) => {
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, ws, bName);
+  });
+  XLSX.writeFile(wb, 'Format_Contoh_Kerusakan_Inventaris_SMK_Dwijendra.xlsx');
+  showToast('Template Excel berhasil diunduh.', 'success');
+}
+
+// =============================================================================
+// 14. PENGATURAN & KELOLA PENGGUNA
+// =============================================================================
+
+async function loadSettingsData() {
+  try {
+    const s = await callApi('settings.get');
+    document.getElementById('set-nama-sekolah').value = s.nama_sekolah || '';
+    document.getElementById('set-nama-aplikasi').value = s.nama_aplikasi || '';
+    document.getElementById('set-alamat').value = s.alamat_sekolah || '';
+    document.getElementById('set-kota').value = s.kota || '';
+
+    document.getElementById('set-kepala-jabatan').value = s.kepala_jabatan || '';
+    document.getElementById('set-kepala-nama').value = s.kepala_nama || '';
+    document.getElementById('set-kepala-id-label').value = s.kepala_id_label || 'NIK';
+    document.getElementById('set-kepala-id').value = s.kepala_id || '';
+
+    document.getElementById('set-wakasek-jabatan').value = s.wakasek_jabatan || '';
+    document.getElementById('set-wakasek-nama').value = s.wakasek_nama || '';
+    document.getElementById('set-wakasek-id-label').value = s.wakasek_id_label || 'NIK';
+    document.getElementById('set-wakasek-id').value = s.wakasek_id || '';
+
+    document.getElementById('set-tp-mode').value = s.tahun_pelajaran_mode || 'otomatis';
+    document.getElementById('set-tp-manual').value = s.tahun_pelajaran || '';
+    document.getElementById('set-kertas').value = s.laporan_kertas || 'A4';
+    document.getElementById('set-orientasi').value = s.laporan_orientasi || 'landscape';
+    document.getElementById('set-thumb').value = s.laporan_thumbnail || 'ya';
+
+    toggleTpMode(document.getElementById('set-tp-mode'));
+  } catch (err) {
+    showToast('Gagal memuat pengaturan: ' + err.message, 'error');
+  }
+}
+
+function toggleTpMode(sel) {
+  document.getElementById('grp-tp-manual').style.display = (sel.value === 'manual') ? 'block' : 'none';
+}
+
+async function handleSettingsSubmit(event) {
+  event.preventDefault();
+  const payload = {
+    nama_sekolah: document.getElementById('set-nama-sekolah').value.trim(),
+    nama_aplikasi: document.getElementById('set-nama-aplikasi').value.trim(),
+    alamat_sekolah: document.getElementById('set-alamat').value.trim(),
+    kota: document.getElementById('set-kota').value.trim(),
+    kepala_jabatan: document.getElementById('set-kepala-jabatan').value.trim(),
+    kepala_nama: document.getElementById('set-kepala-nama').value.trim(),
+    kepala_id_label: document.getElementById('set-kepala-id-label').value.trim(),
+    kepala_id: document.getElementById('set-kepala-id').value.trim(),
+    wakasek_jabatan: document.getElementById('set-wakasek-jabatan').value.trim(),
+    wakasek_nama: document.getElementById('set-wakasek-nama').value.trim(),
+    wakasek_id_label: document.getElementById('set-wakasek-id-label').value.trim(),
+    wakasek_id: document.getElementById('set-wakasek-id').value.trim(),
+    tahun_pelajaran_mode: document.getElementById('set-tp-mode').value,
+    tahun_pelajaran: document.getElementById('set-tp-manual').value.trim(),
+    laporan_kertas: document.getElementById('set-kertas').value,
+    laporan_orientasi: document.getElementById('set-orientasi').value,
+    laporan_thumbnail: document.getElementById('set-thumb').value
+  };
+
+  try {
+    await callApi('settings.update', payload);
+    showToast('Pengaturan sistem berhasil disimpan!', 'success');
+    if (payload.nama_aplikasi) {
+      const el = document.getElementById('sidebar-app-name');
+      if (el) el.textContent = payload.nama_aplikasi;
+      const tLogin = document.getElementById('login-app-title');
+      if (tLogin) tLogin.textContent = payload.nama_aplikasi.toUpperCase();
+    }
+    if (payload.nama_sekolah) {
+      const el = document.getElementById('sidebar-school-name');
+      if (el) el.textContent = payload.nama_sekolah;
+      const sLogin = document.getElementById('login-school-subtitle');
+      if (sLogin) sLogin.textContent = payload.nama_sekolah.toUpperCase();
+    }
+  } catch (err) {
+    showToast('Gagal menyimpan pengaturan: ' + err.message, 'error');
+  }
+}
+
+async function handleLogoUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const p = await processImageFile(file);
+  try {
+    const res = await callApi('settings.uploadLogo', { data: p.dataBase64, mime: p.mime });
+    document.getElementById('set-logo-preview').innerHTML = `<img src="${res.logo}" style="width:100%; height:100%; object-fit:cover;">`;
+    showToast('Logo sekolah berhasil diperbarui.', 'success');
+  } catch (err) {
+    showToast('Gagal mengunggah logo: ' + err.message, 'error');
+  }
+}
+
+async function removeLogoSekolah() {
+  if (!confirm('Hapus logo sekolah?')) return;
+  try {
+    await callApi('settings.removeLogo');
+    document.getElementById('set-logo-preview').innerHTML = '<span>Logo</span>';
+    showToast('Logo berhasil dihapus.', 'info');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// KELOLA PENGGUNA (ADMIN ONLY)
+async function loadUsersData() {
+  const tbody = document.getElementById('tbody-users');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px;">Memuat data pengguna...</td></tr>';
+  try {
+    const users = await callApi('users.list');
+    tbody.innerHTML = users.map((u) => `
+      <tr>
+        <td style="font-weight:700;">${escapeHtml(u.username)}</td>
+        <td>${escapeHtml(u.nama)}</td>
+        <td>${escapeHtml(u.email || '-')}</td>
+        <td><span class="badge" style="background:var(--primary-50); color:var(--primary-800);">${escapeHtml(u.peranLabel)}</span></td>
+        <td>${u.status === 'AKTIF' ? '<span class="badge badge-sudah">Aktif</span>' : '<span class="badge badge-belum">Nonaktif</span>'}</td>
+        <td style="font-size:12px;">${escapeHtml(u.loginTerakhir || 'Belum pernah')}</td>
+        <td style="text-align:center;">
+          <button class="btn btn-secondary" onclick="editUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.nama)}', '${escapeHtml(u.email || '')}', '${u.peran}', '${u.status}')" style="font-size:11px; padding:3px 8px;">Edit</button>
+          <button class="btn btn-secondary" onclick="resetUserPasswordAction('${u.id}', '${escapeHtml(u.username)}')" style="font-size:11px; padding:3px 8px; margin-left:4px;">Reset Sandi</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" style="color:red; text-align:center;">Gagal: ${err.message}</td></tr>`;
+  }
+}
+
+function openAddUserModal() {
+  document.getElementById('mdl-user-title').textContent = 'Tambah Pengguna Baru';
+  document.getElementById('usr-id').value = '';
+  document.getElementById('usr-username').value = '';
+  document.getElementById('usr-username').disabled = false;
+  document.getElementById('usr-nama').value = '';
+  document.getElementById('usr-email').value = '';
+  document.getElementById('usr-peran').value = 'PETUGAS';
+  document.getElementById('usr-password').value = '';
+  document.getElementById('grp-usr-status').style.display = 'none';
+  document.getElementById('grp-usr-pw').style.display = 'block';
+  openModal('modal-user');
+}
+
+function editUserModal(id, username, nama, email, peran, status) {
+  document.getElementById('mdl-user-title').textContent = `Edit Pengguna: ${username}`;
+  document.getElementById('usr-id').value = id;
+  document.getElementById('usr-username').value = username;
+  document.getElementById('usr-username').disabled = true;
+  document.getElementById('usr-nama').value = nama;
+  document.getElementById('usr-email').value = email;
+  document.getElementById('usr-peran').value = peran;
+  document.getElementById('usr-status').value = status;
+  document.getElementById('grp-usr-status').style.display = 'block';
+  document.getElementById('grp-usr-pw').style.display = 'none';
+  openModal('modal-user');
+}
+
+async function handleUserSubmit(event) {
+  event.preventDefault();
+  const id = document.getElementById('usr-id').value;
+  const isEdit = !!id;
+
+  const payload = {
+    id: id,
+    username: document.getElementById('usr-username').value.trim(),
+    nama: document.getElementById('usr-nama').value.trim(),
+    email: document.getElementById('usr-email').value.trim(),
+    peran: document.getElementById('usr-peran').value,
+    status: document.getElementById('usr-status').value,
+    password: document.getElementById('usr-password').value.trim()
+  };
+
+  try {
+    const res = await callApi(isEdit ? 'users.update' : 'users.create', payload);
+    if (!isEdit && res.tempPassword) {
+      alert(`Pengguna berhasil dibuat!\nUsername: ${res.username}\nKata Sandi Sementara: ${res.tempPassword}\n\nHarap catat kata sandi ini untuk diberikan kepada pengguna.`);
+    } else {
+      showToast('Data pengguna berhasil diperbarui.', 'success');
+    }
+    closeModal('modal-user');
+    loadUsersData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function resetUserPasswordAction(id, username) {
+  if (!confirm(`Reset kata sandi pengguna "${username}"? Sistem akan membuat kata sandi acak baru.`)) return;
+  try {
+    const res = await callApi('users.resetPassword', { id });
+    alert(`Kata sandi untuk ${res.username} berhasil direset!\n\nKata Sandi Baru: ${res.tempPassword}\n\nBerikan kata sandi ini kepada pengguna bersangkutan.`);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// =============================================================================
+// 15. LOG AKTIVITAS & CADANGAN DATA
+// =============================================================================
+
+async function loadLogData(page = 1) {
+  const search = document.getElementById('log-filter-search')?.value.trim() || '';
+  const aksi = document.getElementById('log-filter-aksi')?.value || '';
+  const tbody = document.getElementById('tbody-logs');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px;">Memuat riwayat log...</td></tr>';
+
+  try {
+    const res = await callApi('log.list', { page, pageSize: 25, search, aksi });
+
+    // Isi filter aksi jika kosong
+    const selAksi = document.getElementById('log-filter-aksi');
+    if (selAksi && selAksi.options.length <= 1 && res.aksiList) {
+      res.aksiList.forEach((a) => {
+        const opt = document.createElement('option');
+        opt.value = a.value;
+        opt.textContent = a.label;
+        selAksi.appendChild(opt);
+      });
+    }
+
+    if (!res.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:var(--neutral-400);">Belum ada riwayat aktivitas.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = res.rows.map((l) => `
+      <tr>
+        <td style="font-size:11px; white-space:nowrap;">${escapeHtml(l.waktu)}</td>
+        <td style="font-weight:600;">${escapeHtml(l.pengguna)}</td>
+        <td><span class="badge" style="background:var(--neutral-100);">${escapeHtml(l.peran)}</span></td>
+        <td><b>${escapeHtml(l.aksiLabel)}</b></td>
+        <td>${escapeHtml(l.entitas)}</td>
+        <td style="font-family:'JetBrains Mono', monospace; font-size:11px;">${escapeHtml(l.entitasId)}</td>
+        <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(l.detail)}">${escapeHtml(l.detail)}</td>
+      </tr>
+    `).join('');
+
+    document.getElementById('log-pagination-info').textContent = `${formatNumber(res.total)} total aktivitas`;
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="7" style="color:red; text-align:center;">Gagal: ${err.message}</td></tr>`;
+  }
+}
+
+async function triggerCreateBackup() {
+  if (!confirm('Buat salinan cadangan Google Spreadsheet sekarang?')) return;
+  showToast('Membuat snapshot cadangan di Google Drive...', 'info', 5000);
+  try {
+    const res = await callApi('backup.create');
+    showToast(res.pesan, 'success', 5000);
+    loadBackupList();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function loadBackupList() {
+  const tbody = document.getElementById('tbody-backups');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Memuat file cadangan...</td></tr>';
+  try {
+    const list = await callApi('backup.list');
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--neutral-400);">Belum ada file cadangan tersimpan.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map((b) => `
+      <tr>
+        <td style="font-weight:600;">${escapeHtml(b.nama)}</td>
+        <td style="font-size:12px;">${escapeHtml(b.dibuatPada)}</td>
+        <td>${formatFileSize(b.ukuran)}</td>
+        <td>
+          <a href="${b.url}" target="_blank" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; text-decoration:none;">Buka di Drive</a>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:red; text-align:center;">Gagal: ${err.message}</td></tr>`;
+  }
+}
+
+async function exportJsonBackup() {
+  showToast('Menyiapkan file cadangan JSON...', 'info');
+  try {
+    const res = await callApi('backup.exportJson');
+    const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Backup_Kerusakan_Inventaris_${Date.now()}.json`;
+    a.click();
+    showToast('File JSON cadangan berhasil diunduh.', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// =============================================================================
+// 16. MODAL & LIGHTBOX CONTROLLER
+// =============================================================================
+
+function openModal(modalId) {
+  const el = document.getElementById(modalId);
+  if (el) el.classList.add('show');
+}
+
+function closeModal(modalId) {
+  const el = document.getElementById(modalId);
+  if (el) el.classList.remove('show');
+}
+
+function openLightbox(imgUrl, caption) {
+  const modal = document.getElementById('lightbox-modal');
+  const img = document.getElementById('lightbox-img');
+  const cap = document.getElementById('lightbox-caption');
+  img.src = imgUrl;
+  cap.textContent = caption || '';
+  modal.classList.add('show');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox-modal').classList.remove('show');
+}
+
+// =============================================================================
+// 17. FUNGSI UTILITAS BANTU TAMPILAN
+// =============================================================================
+
+function hasPermission(perm) {
+  return AppState.user && AppState.user.permissions && AppState.user.permissions.includes(perm);
+}
+
+function getTodayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${('0' + (d.getMonth() + 1)).slice(-2)}-${('0' + d.getDate()).slice(-2)}`;
+}
+
+function formatDateIndo(isoStr) {
+  if (!isoStr) return '-';
+  const p = isoStr.split('-');
+  if (p.length < 3) return isoStr;
+  return `${parseInt(p[2], 10)} ${BULAN_NAMES[parseInt(p[1], 10) - 1]} ${p[0]}`;
+}
+
+function formatNumber(num) {
+  return Number(num || 0).toLocaleString('id-ID');
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  const k = 1024, dm = 1;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+function renderStatusBadge(status) {
+  if (status === 'Sudah Diperbaiki') {
+    return '<span class="badge badge-sudah">Sudah Diperbaiki</span>';
+  }
+  return '<span class="badge badge-belum">Belum Diperbaiki</span>';
+}
+
+function setFieldError(fieldId, msg) {
+  const group = document.getElementById(`grp-${fieldId}`) || document.getElementById(`group-${fieldId}`);
+  if (group) group.classList.add('has-error');
+  const errEl = document.getElementById(`err-${fieldId}`);
+  if (errEl) errEl.textContent = msg;
+}
+
+function clearFieldError(fieldId) {
+  const group = document.getElementById(`grp-${fieldId}`) || document.getElementById(`group-${fieldId}`);
+  if (group) group.classList.remove('has-error');
+  const errEl = document.getElementById(`err-${fieldId}`);
+  if (errEl) errEl.textContent = '';
+}
+</script>
