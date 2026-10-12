@@ -1,5 +1,7 @@
 # SISTEM INFORMASI KERUSAKAN INVENTARIS SMK DWIJENDRA DENPASAR
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/kadekgitana-glitch/aplikasi-kerusakan-inventaris-dwijendra)
+
 Aplikasi web administrasi inventaris sekolah modern berbasis **Google Apps Script Web App**, **Google Sheets**, dan **Google Drive** yang dirancang khusus untuk mempermudah tugas **Wakil Kepala Sekolah Bidang Sarana dan Prasarana (Wakasek Sarpras)** dalam melakukan pencatatan, dokumentasi foto kerusakan & hasil perbaikan, pemantauan penanganan, serta pelaporan resmi tanpa biaya server bulanan.
 
 ---
